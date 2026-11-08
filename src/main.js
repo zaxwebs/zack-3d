@@ -37,11 +37,9 @@ try {
   const helper = new THREE.SkeletonHelper(model.root);
   helper.visible = false; scene.add(helper);
   const map = model.material.map;
-  const headRest = model.bones.Head.quaternion.clone();
   const rig = createZackRig(model);
   const applyHead = () => {
-    model.bones.Head.quaternion.copy(headRest).multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), THREE.MathUtils.degToRad(Number(document.querySelector('#head').value))));
-    model.root.updateMatrixWorld(true);
+    rig.setHeadTurn(Number(document.querySelector('#head').value));
   };
   const selectPose = name => {
     rig.setPose(name);
@@ -50,7 +48,13 @@ try {
   };
   document.querySelectorAll('[data-pose]').forEach(button => { button.onclick = () => selectPose(button.dataset.pose); });
   selectPose('down');
-  document.querySelector('#stats').textContent = 'Three poses. Coordinated shoulders. Editable geometry.';
+  document.querySelector('#stats').textContent = 'Gentle poses. Stable torso. Natural head turns.';
+  document.querySelector('#gentle').onchange = event => {
+    rig.setConservativeMode(event.target.checked);
+    const head = document.querySelector('#head');
+    head.min = -rig.limits.headYaw; head.max = rig.limits.headYaw;
+    applyHead();
+  };
   document.querySelector('#surface').onchange = event => {
     model.material.map = event.target.value === 'textured' ? map : null;
     model.material.wireframe = event.target.value === 'wire';

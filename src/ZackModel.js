@@ -109,6 +109,41 @@ export function createZackModel(manifest, buffer, texture = null) {
     correctedVertices++;
   }
   root.userData.chestWeightCorrection = { correctedVertices, innerBoundary: 0.085, outerBoundary: 0.145 };
+  // The source auto-rig also assigns the hoodie pocket and abdomen to the
+  // thighs. Restrict that influence to the pants/hem transition.
+  const legJoints = new Set();
+  for (const side of ['L', 'R']) bones[`${side}_Thigh`].traverse(bone => {
+    const index = skeleton.bones.indexOf(bone);
+    if (index >= 0) legJoints.add(index);
+  });
+  let hoodieVertices = 0;
+  for (let vertex = 0; vertex < joints.count; vertex++) {
+    mesh.getVertexPosition(vertex, point).applyMatrix4(mesh.matrixWorld);
+    root.worldToLocal(point);
+    const protect = THREE.MathUtils.smoothstep(point.y, 0.405, 0.45)
+      * (1 - THREE.MathUtils.smoothstep(Math.abs(point.x - chestCenter), 0.115, 0.145));
+    if (!protect) continue;
+    const influences = new Map();
+    let removed = 0;
+    for (let slot = 0; slot < 4; slot++) {
+      const index = joints.array[vertex * 4 + slot];
+      const weight = weights.array[vertex * 4 + slot];
+      const retained = legJoints.has(index) ? weight * (1 - protect) : weight;
+      removed += weight - retained;
+      influences.set(index, (influences.get(index) || 0) + retained);
+    }
+    if (removed < 1e-8) continue;
+    const spine = skeleton.bones.indexOf(point.y < 0.51 ? bones.Waist : bones.Spine01);
+    influences.set(spine, (influences.get(spine) || 0) + removed);
+    const strongest = [...influences].filter(([, weight]) => weight > 0).sort((a, b) => b[1] - a[1]).slice(0, 4);
+    const total = strongest.reduce((sum, [, weight]) => sum + weight, 0);
+    for (let slot = 0; slot < 4; slot++) {
+      joints.array[vertex * 4 + slot] = strongest[slot]?.[0] ?? 0;
+      weights.array[vertex * 4 + slot] = (strongest[slot]?.[1] ?? 0) / total;
+    }
+    hoodieVertices++;
+  }
+  root.userData.hoodieWeightCorrection = { correctedVertices: hoodieVertices, hemFadeStart: 0.405, torsoStart: 0.45 };
   joints.needsUpdate = weights.needsUpdate = true;
   for (let vertex = 0; vertex < joints.count; vertex++) {
     let slot = 0;

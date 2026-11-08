@@ -14,7 +14,8 @@
     <div class="row"><button data-pose="down" aria-pressed="true">Hands down</button><button data-pose="front" aria-pressed="false">Hands front</button><button data-pose="hi" aria-pressed="false">Hi 👋</button><button data-pose="rest" aria-pressed="false">T-pose</button></div>
     <label>Surface<select id="surface"><option value="textured">Original texture</option><option value="clay">Clay geometry</option><option value="wire">Wireframe</option></select></label>
     <label><input id="rig" type="checkbox"> Show skeleton</label>
-    <label>Head turn <input id="head" type="range" min="-45" max="45" value="0"></label>
+    <label><input id="gentle" type="checkbox" checked> Gentle poses</label>
+    <label>Head turn <input id="head" type="range" min="-30" max="30" value="0"></label>
     <div class="row"><button id="reset">Reset model</button><button id="export">Export pose .json</button></div>
     <p>22,862 vertices · 10,712 triangles<br>78 bones · 4K texture</p>
   </aside>

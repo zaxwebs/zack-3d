@@ -9,6 +9,11 @@ try {
   page.on('pageerror', error => errors.push(error.message));
   await page.goto('http://127.0.0.1:5173/');
   await page.waitForFunction(() => window.zack, { timeout: 30000 });
+  assert(await page.isChecked('#gentle'));
+  await page.uncheck('#gentle');
+  assert.equal(await page.locator('#head').getAttribute('max'), '45');
+  await page.check('#gentle');
+  assert.equal(await page.locator('#head').getAttribute('max'), '30');
   await page.click('[data-pose="rest"]');
   const report = await page.evaluate(async () => {
     const THREE = await import('/node_modules/three/build/three.module.js');
@@ -83,3 +88,5 @@ try {
   console.log(JSON.stringify(report, null, 2));
 } finally { await browser.close(); }
 await import('./inspect-poses.mjs');
+await import('./verify-rig.mjs');
+await import('./verify-gentle.mjs');

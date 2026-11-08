@@ -13,7 +13,9 @@ npm run dev
 
 Open http://127.0.0.1:5173/. Orbit, zoom, inspect clay/wireframe surfaces, show the skeleton, pose the head/shoulder, and export a native Three.js JSON scene.
 
-The viewer starts with **Hands down**. Choose **Hands front** or **Hi** for the other poses, or **T-pose** to inspect the rest pose. Shoulder rotations use character-space arm directions and coordinated clavicles rather than the imported bone's oblique local axes. The wave rotates the forearm and cuff together to present the open palm. Bind geometry is retained; chest skin weights are corrected to prevent the arms pulling the torso inward.
+The viewer starts with **Hands down** and **Gentle poses** enabled. Choose **Hands front** or **Hi** for the other poses, or **T-pose** to inspect the rest pose. Shoulder rotations use character-space arm directions and coordinated clavicles rather than the imported bone's oblique local axes. The gentle wave uses a more open arm and shares a small amount of palm rotation with the upper arm, preserving the palm-forward, thumb-inward orientation while reducing elbow pinching. Bind geometry is retained; chest skin weights are corrected to prevent the arms pulling the torso inward.
+
+Gentle controls limit head yaw to ±30°, elbow flex to 60°, and arm elevation to 115° from arms-down. They restore all original bone scales and translations on pose selection. Turning **Gentle poses** off restores the earlier pose shapes and ±45° head control for comparison. These limits apply to the rig controller; direct edits to exposed bones can bypass them. Skinning still changes the surface during bends—the mode reduces visible collapse but does not guarantee zero deformation or prevent every intersection. No volume bulges, morphs, topology changes, or bone stretching are used. `rig.setConservativeMode(false)` is the API equivalent of disabling the checkbox.
 
 ```js
 import { createZackRig } from './ZackRig.js';
@@ -27,9 +29,11 @@ The model factory moves the source shoulder pivots outward by 0.03 scene units p
 
 Chest vertices are anchored to the spine by removing leaked arm/clavicle weights in the torso center and smoothly restoring those influences toward the sleeve caps (0.085–0.145 units from the centerline). Weights remain normalized with at most four influences per vertex. `root.userData.chestWeightCorrection` records the correction. The pose tests measure central chest displacement against the rest pose to catch torso shrinkage.
 
+The rig audit also removes thigh influence from the hoodie above the hem, with a smooth transition between heights 0.405 and 0.450. This keeps the pocket and abdomen stable during leg lifts. `root.userData.hoodieWeightCorrection` records the change. `rig.setHeadTurn(degrees)` turns the head around the character's upright axis, uses the active mode's yaw limit, and preserves the turn when switching poses. Pose selection restores the original bone positions and scales as well as rotations. See `RIG_AUDIT.md` for scope, evidence, and remaining limitations.
+
 ## Use in another Three.js project
 
-Copy `src/ZackModel.js` and `public/model/` into your project. Install `three`, then:
+Copy `src/ZackModel.js`, `src/ZackRig.js`, and `public/model/` into your project. Install `three`, then:
 
 ```js
 import { loadZackModel } from './ZackModel.js';
