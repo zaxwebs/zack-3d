@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { repairHandSeams } from './repairHandSeams.js';
 
 /** Build a native, editable Three.js model without GLTFLoader or a GLB. */
 export function createZackModel(manifest, buffer, texture = null) {
@@ -69,8 +70,10 @@ export function createZackModel(manifest, buffer, texture = null) {
     shoulderCorrections[side] = { original: original.toArray(), corrected: bone.getWorldPosition(new THREE.Vector3()).toArray() };
   }
   root.userData.shoulderCorrections = shoulderCorrections;
+  root.userData.handSeamCorrection = repairHandSeams(geometry, skeleton, bones);
   const restTransforms = skeleton.bones.map(bone => ({ position: bone.position.clone(), quaternion: bone.quaternion.clone(), scale: bone.scale.clone() }));
   const restPositions = geometry.attributes.position.array.slice();
+  const restNormals = geometry.attributes.normal.array.slice();
   const regions = {};
   const joints = geometry.attributes.skinIndex;
   const weights = geometry.attributes.skinWeight;
@@ -169,7 +172,7 @@ export function createZackModel(manifest, buffer, texture = null) {
       bone.scale.copy(restTransforms[index].scale);
     });
     geometry.attributes.position.array.set(restPositions);
-    geometry.attributes.normal.array.set(read('normal'));
+    geometry.attributes.normal.array.set(restNormals);
     geometry.attributes.normal.needsUpdate = true;
     refreshGeometry(false);
   }

@@ -2,7 +2,7 @@
 
 This project reconstructs `Zack 3D V2.glb` as native Three.js `BufferGeometry`, a `SkinnedMesh`, and a named skeleton. The model module does not load the GLB. Extracted arrays, rig metadata, and the original texture live in `public/model/`.
 
-This is an exact geometry conversion, not a newly authored parametric character. It preserves the source topology and UV seams. Hair, clothing, eyes, and body are part of one textured mesh; they are not separate editable objects.
+This is a geometry conversion, not a newly authored parametric character. It preserves the source topology and UV seams, with a small runtime hand-seam repair described below. Hair, clothing, eyes, and body are part of one textured mesh; they are not separate editable objects.
 
 ## Preview
 
@@ -35,7 +35,7 @@ The rig audit also removes thigh influence from the hoodie above the hem, with a
 
 ## Use in another Three.js project
 
-Copy `src/ZackModel.js`, `src/ZackRig.js`, and `public/model/` into your project. Install `three`, then:
+Copy `src/ZackModel.js`, `src/ZackRig.js`, `src/repairHandSeams.js`, and `public/model/` into your project. Install `three`, then:
 
 ```js
 import { loadZackModel } from './ZackModel.js';
@@ -69,6 +69,8 @@ The default loader fetches `manifest.json`, `geometry.bin`, and a texture varian
 The lossless WebP texture repairs the drawstring roots using mesh geometry. It projects circular white eyelets onto the hoodie UVs and extends the original cord texture upward to the roots. No generated images are used. The original `basecolor.jpg` remains available. Run `python scripts/retexture_drawstrings.py` to rebuild the texture (NumPy and Pillow required), then `python scripts/optimize_textures.py` to regenerate the smaller variants. The retexture script fits the cord axes and hoodie planes, records the intersections and ring centers, and verifies that pixels outside the geometry masks stay unchanged. Geometry and rigging are unaffected.
 
 ## Source inspection and verification
+
+The source mesh has a narrow open slit at the base of each thumb. `repairHandSeams()` detects only four-edge hand openings with a sub-0.001-unit diagonal and stitches their near-coincident corners. It adjusts eight existing vertex records by at most 0.000245 model units, sharing position, normal, and normalized skin weights across the joined corners while preserving UV coordinates, vertex count, and triangle indices. Larger openings, clothing boundaries, and the source files are left unchanged. `root.userData.handSeamCorrection` records the repair. Reset retains it, and `node scripts/verify-hand-seams.mjs` checks closure in every preset.
 
 - 1 skinned mesh, 22,862 vertices, 10,712 triangles
 - 78 named bones, four skin influences per vertex

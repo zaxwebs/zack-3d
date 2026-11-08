@@ -26,11 +26,16 @@ try {
     original.scene.traverse(node => { if (node.isSkinnedMesh) source = node; });
     const model = window.zack;
     model.root.updateMatrixWorld(true);
+    const handSeamCorrection = model.root.userData.handSeamCorrection;
+    const repairedVertices = new Set(handSeamCorrection.repairs.flatMap(repair => repair.vertices));
     const attributes = {};
+    const unrepairedAttributes = {};
     for (const name of ['position', 'normal', 'uv', 'skinIndex', 'skinWeight']) {
       const a = source.geometry.attributes[name].array;
       const b = model.geometry.attributes[name].array;
       attributes[name] = a.length === b.length && a.every((v, i) => v === b[i]);
+      unrepairedAttributes[name] = a.length === b.length && a.every((value, index) =>
+        repairedVertices.has(Math.floor(index / source.geometry.attributes[name].itemSize)) || value === b[index]);
     }
     const packedManifest = await fetch('/model/manifest.json').then(response => response.json());
     const packedBuffer = await fetch('/model/geometry.bin').then(response => response.arrayBuffer());
@@ -61,10 +66,12 @@ try {
     }
     const a = new THREE.Vector3(), b = new THREE.Vector3();
     let maxWorldVertexError = 0;
+    let maxRepairedWorldVertexError = 0;
     for (let i = 0; i < model.geometry.attributes.position.count; i++) {
       source.getVertexPosition(i, a).applyMatrix4(source.matrixWorld);
       model.mesh.getVertexPosition(i, b).applyMatrix4(model.mesh.matrixWorld);
-      maxWorldVertexError = Math.max(maxWorldVertexError, a.distanceTo(b));
+      if (repairedVertices.has(i)) maxRepairedWorldVertexError = Math.max(maxRepairedWorldVertexError, a.distanceTo(b));
+      else maxWorldVertexError = Math.max(maxWorldVertexError, a.distanceTo(b));
     }
     const sourceIndex = source.geometry.index.array;
     const shoulderPivots = {};
@@ -75,7 +82,8 @@ try {
       const elbowAfter = model.bones[`${side}_Forearm`].getWorldPosition(new THREE.Vector3());
       shoulderPivots[side] = { offset: after.sub(before).toArray(), elbowRestError: elbowBefore.distanceTo(elbowAfter) };
     }
-    return { attributes, indexEqual: sourceIndex.every((v, i) => v === model.geometry.index.array[i]),
+    return { attributes, unrepairedAttributes, handSeamCorrection, maxRepairedWorldVertexError,
+      indexEqual: sourceIndex.every((v, i) => v === model.geometry.index.array[i]),
       packedJointIndicesExact,
       packedTypes: { index: packedManifest.arrays.index.type,
         skinIndex: packedManifest.arrays.skinIndex.type,
@@ -89,7 +97,13 @@ try {
       texture: [model.material.map.image.width, model.material.map.image.height],
       bounds: new THREE.Box3().setFromObject(model.root, true).getSize(new THREE.Vector3()).toArray() };
   });
-  for (const name of ['position', 'normal', 'uv']) assert(report.attributes[name]);
+  for (const name of ['position', 'normal']) {
+    assert.equal(report.attributes[name], false, `Hand seam repair should adjust ${name}`);
+    assert(report.unrepairedAttributes[name], `Unrepaired ${name} must match the source`);
+  }
+  assert(report.attributes.uv);
+  assert.equal(report.handSeamCorrection.slits, 2);
+  assert(report.maxRepairedWorldVertexError < 0.00025);
   assert.equal(report.attributes.skinWeight, false, 'Chest skin weights should differ from the source auto-rig');
   assert(report.packedJointIndicesExact, 'Packed joint indices must match the source');
   assert.deepEqual(report.packedTypes, { index: 'Uint16Array', skinIndex: 'Uint8Array',
@@ -127,6 +141,48 @@ try {
   await page.click('#export');
   const download = await downloadPromise;
   await download.saveAs('artifacts/zack.three.json');
+  await page.selectOption('#surface', 'textured');
+  await page.evaluate(async () => {
+    const THREE = await import('/node_modules/three/build/three.module.js');
+    const thumb = window.zack.bones.L_Thumb1.getWorldPosition(new THREE.Vector3());
+    studio.controls.enableDamping = false;
+    studio.controls.minDistance = 0.02;
+    studio.controls.target.copy(thumb);
+    studio.camera.position.copy(thumb).add(new THREE.Vector3(0, 0, 0.12));
+    studio.controls.update();
+  });
+  await page.evaluate(async () => {
+    const manifest = await fetch('/model/manifest.json').then(response => response.json());
+    const buffer = await fetch('/model/geometry.bin').then(response => response.arrayBuffer());
+    window.handSeamAttributes = {};
+    for (const name of ['position', 'normal', 'skinIndex', 'skinWeight']) {
+      const attribute = zack.geometry.attributes[name];
+      window.handSeamAttributes[name] = attribute.array.slice();
+      const layout = manifest.arrays[name];
+      const constructors = { Float32Array, Uint8Array };
+      const source = new constructors[layout.type](buffer, layout.byteOffset, layout.count * layout.itemSize);
+      for (const { vertices } of zack.root.userData.handSeamCorrection.repairs) {
+        for (const vertex of vertices) {
+          for (let component = 0; component < layout.itemSize; component++) {
+            const index = vertex * layout.itemSize + component;
+            attribute.array[index] = source[index] / (layout.normalized ? 255 : 1);
+          }
+        }
+      }
+      attribute.needsUpdate = true;
+    }
+  });
+  await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+  await page.screenshot({ path: 'artifacts/hand-seam-before.png' });
+  await page.evaluate(() => {
+    for (const [name, values] of Object.entries(window.handSeamAttributes)) {
+      zack.geometry.attributes[name].array.set(values);
+      zack.geometry.attributes[name].needsUpdate = true;
+    }
+    delete window.handSeamAttributes;
+  });
+  await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+  await page.screenshot({ path: 'artifacts/hand-seam-repair.png' });
   // Check a native ObjectLoader round trip retains the skinned model.
   const roundTrip = await page.evaluate(async () => {
     const THREE = await import('/node_modules/three/build/three.module.js');
@@ -143,3 +199,4 @@ await import('./inspect-poses.mjs');
 await import('./verify-rig.mjs');
 await import('./verify-gentle.mjs');
 await import('./verify-poses.mjs');
+await import('./verify-hand-seams.mjs');
