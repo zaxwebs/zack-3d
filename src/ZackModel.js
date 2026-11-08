@@ -151,7 +151,7 @@ export async function loadZackModel(baseUrl = '/model/') {
   const [manifest, buffer, texture] = await Promise.all([
     fetchChecked('manifest.json').then(r => r.json()),
     fetchChecked('geometry.bin').then(r => r.arrayBuffer()),
-    new THREE.TextureLoader().loadAsync(new URL('basecolor.jpg', base).href),
+    new THREE.TextureLoader().loadAsync(new URL('basecolor-drawstrings.webp', base).href),
   ]);
   texture.colorSpace = THREE.SRGBColorSpace;
   texture.flipY = false;

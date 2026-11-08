@@ -58,7 +58,9 @@ zack.dispose();
 
 `regions` is a convenience map based on dominant skin weights, not a clothing or anatomical segmentation. Mesh-local coordinates use the source export's orientation. For deliberate surface edits, consider all coincident vertices along UV seams. `refreshGeometry()` recalculates normals; call `refreshGeometry(false)` if supplying your own normals.
 
-The default loader fetches three files: `manifest.json`, `geometry.bin`, and `basecolor.jpg`. You can also call `createZackModel(manifest, arrayBuffer, texture)` directly. Each instance gets independent geometry and skeleton data. Exported `artifacts/zack.three.json` is self-contained and can be read with `THREE.ObjectLoader().loadAsync(url)`.
+The default loader fetches three files: `manifest.json`, `geometry.bin`, and `basecolor-drawstrings.webp`. You can also call `createZackModel(manifest, arrayBuffer, texture)` directly. Each instance gets independent geometry and skeleton data. Exported `artifacts/zack.three.json` is self-contained and can be read with `THREE.ObjectLoader().loadAsync(url)`.
+
+The lossless WebP texture repairs the drawstring roots using mesh geometry. It projects circular white eyelets onto the hoodie UVs and extends the original cord texture upward to the roots. No generated images are used. The original `basecolor.jpg` remains available. Run `python scripts/retexture_drawstrings.py` to rebuild the texture (NumPy and Pillow required). The script fits the cord axes and hoodie planes, records the intersections and ring centers, and verifies that pixels outside the geometry masks stay unchanged. Geometry and rigging are unaffected.
 
 ## Source inspection and verification
 
