@@ -95,6 +95,10 @@ export function retargetMocapClip(sourceState, sourceClip) {
       hipTrack.values[i + 2] += restHipPosition.z;
     }
   }
+  // retargetClip uses the target skeleton as a working pose. Restore Zack's
+  // actual rest transforms before the clip is handed to the mixer; otherwise
+  // an untracked parent bone can retain the source rig's orientation.
+  model.reset();
   return clip;
 }
 

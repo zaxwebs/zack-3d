@@ -58,6 +58,9 @@ let helper;
 let selectedPose = 'down';
 let mocapController;
 let cameraTarget = new THREE.Vector3();
+const mocapFollowOffset = new THREE.Vector3();
+const mocapFollowTarget = new THREE.Vector3();
+let mocapFollowInitialized = false;
 function frameModel() {
   if (!model) return;
   const box = new THREE.Box3().setFromObject(model.root, true);
@@ -74,6 +77,24 @@ function frameModel() {
   controls.maxDistance = size.y * 8;
   controls.update();
 }
+function resetMocapFollow() {
+  if (!model) return;
+  model.root.updateMatrixWorld(true);
+  const hipPosition = model.bones.Hip.getWorldPosition(new THREE.Vector3());
+  mocapFollowOffset.copy(cameraTarget).sub(hipPosition);
+  mocapFollowInitialized = true;
+}
+function followMocap() {
+  if (!model || !mocapController || mocapController.activeName === 'static' || !mocapFollowInitialized) return;
+  model.root.updateMatrixWorld(true);
+  const hipPosition = model.bones.Hip.getWorldPosition(mocapFollowTarget);
+  const target = mocapFollowTarget.add(mocapFollowOffset);
+  const delta = target.sub(controls.target);
+  if (delta.lengthSq() < 1e-10) return;
+  camera.position.add(delta);
+  controls.target.add(delta);
+  cameraTarget.copy(target);
+}
 try {
   model = await loadZackModel(`${import.meta.env.BASE_URL}model/`);
   scene.add(model.root);
@@ -86,6 +107,7 @@ try {
   scene.add(helper);
   let map = model.material.map;
   rig = createZackRig(model);
+  resetMocapFollow();
 
   const textureButtons = [...document.querySelectorAll('[data-texture-size]')];
   const textureStatus = output('#textureStatus');
@@ -135,6 +157,8 @@ try {
     rig.setPose(name);
     output('#poseDescription').textContent = POSES[name].description;
     applyHead();
+    frameModel();
+    resetMocapFollow();
     document.querySelectorAll('[data-pose]').forEach(button => {
       button.setAttribute('aria-pressed', String(button.dataset.pose === name));
     });
@@ -152,6 +176,8 @@ try {
     onStatic: () => {
       rig.setPose(selectedPose);
       applyHead();
+      frameModel();
+      resetMocapFollow();
     },
   });
   selectPose('down');
@@ -199,6 +225,7 @@ const animationClock = new THREE.Clock();
 renderer.setAnimationLoop(() => {
   const delta = Math.min(animationClock.getDelta(), 0.05);
   mocapController?.update(delta);
+  followMocap();
   controls.update();
   key.target.position.copy(controls.target);
   renderer.render(scene, camera);
