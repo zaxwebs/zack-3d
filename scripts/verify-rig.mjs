@@ -32,9 +32,8 @@ for (const rootAngle of [0, 0.7]) {
   }
 }
 model.root.rotation.set(0, 0, 0);
-rig.setConservativeMode(false);
-rig.setHeadTurn(45); assert.equal(rig.headTurn, 45);
-rig.setConservativeMode(true); assert.equal(rig.headTurn, 30);
+rig.setHeadTurn(45); assert.equal(rig.headTurn, 30);
+rig.setHeadTurn(-45); assert.equal(rig.headTurn, -30);
 rig.setHeadTurn(0); rig.setPose('down');
 const calfPosition = model.bones.R_Calf.position.clone();
 const calfScale = model.bones.R_Calf.scale.clone();

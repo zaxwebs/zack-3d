@@ -16,6 +16,7 @@ export function createZackModel(manifest, buffer, texture = null) {
   geometry.computeBoundingBox();
   geometry.computeBoundingSphere();
   const material = new THREE.MeshStandardMaterial({ ...manifest.material, map: texture });
+  let activeTexture = texture;
   material.name = 'ZackMaterial';
   const mesh = new THREE.SkinnedMesh(geometry, material);
   mesh.normalizeSkinWeights();
@@ -172,12 +173,37 @@ export function createZackModel(manifest, buffer, texture = null) {
     refreshGeometry(false);
   }
   return { root, mesh, geometry, material, skeleton, bones, regions, refreshGeometry, reset,
-    dispose() { geometry.dispose(); material.dispose(); skeleton.dispose(); texture?.dispose(); } };
+    setTexture(nextTexture) {
+      if (nextTexture === activeTexture) return activeTexture;
+      const previousTexture = activeTexture;
+      activeTexture = nextTexture;
+      material.map = nextTexture;
+      material.needsUpdate = true;
+      previousTexture?.dispose();
+      return activeTexture;
+    },
+    dispose() { geometry.dispose(); material.dispose(); skeleton.dispose(); activeTexture?.dispose(); } };
 }
 
-export async function loadZackModel(baseUrl = '/model/') {
+export async function loadZackModel(baseUrl = '/model/', { textureSize = 'auto' } = {}) {
   const base = new URL(baseUrl, globalThis.location?.href ?? import.meta.url);
   if (!base.pathname.endsWith('/')) base.pathname += '/';
+  const selectedTextureSize = textureSize === 'auto'
+    ? (globalThis.matchMedia?.('(max-width: 700px)').matches ? 1024 : 2048)
+    : textureSize;
+  if (![1024, 2048, 4096].includes(selectedTextureSize)) {
+    throw new Error('Texture size must be 1024, 2048, 4096, or "auto"');
+  }
+  const loadTexture = async size => {
+    const textureFile = size === 4096
+      ? 'basecolor-drawstrings.webp'
+      : `basecolor-drawstrings-${size}.webp`;
+    const texture = await new THREE.TextureLoader().loadAsync(new URL(textureFile, base).href);
+    texture.colorSpace = THREE.SRGBColorSpace;
+    texture.flipY = false;
+    texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
+    return texture;
+  };
   async function fetchChecked(path) {
     const response = await fetch(new URL(path, base));
     if (!response.ok) throw new Error(`Could not load ${path}: HTTP ${response.status}`);
@@ -186,10 +212,26 @@ export async function loadZackModel(baseUrl = '/model/') {
   const [manifest, buffer, texture] = await Promise.all([
     fetchChecked('manifest.json').then(r => r.json()),
     fetchChecked('geometry.bin').then(r => r.arrayBuffer()),
-    new THREE.TextureLoader().loadAsync(new URL('basecolor-drawstrings.webp', base).href),
+    loadTexture(selectedTextureSize),
   ]);
-  texture.colorSpace = THREE.SRGBColorSpace;
-  texture.flipY = false;
-  texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
-  return createZackModel(manifest, buffer, texture);
+  const model = createZackModel(manifest, buffer, texture);
+  model.textureSize = selectedTextureSize;
+  let activeTexture = texture;
+  let textureRequest = 0;
+  model.setTextureSize = async size => {
+    if (![1024, 2048, 4096].includes(size)) {
+      throw new Error('Texture size must be 1024, 2048, or 4096');
+    }
+    const request = ++textureRequest;
+    if (size === model.textureSize) return activeTexture;
+    const nextTexture = await loadTexture(size);
+    if (request !== textureRequest) {
+      nextTexture.dispose();
+      return activeTexture;
+    }
+    activeTexture = model.setTexture(nextTexture);
+    model.textureSize = size;
+    return activeTexture;
+  };
+  return model;
 }

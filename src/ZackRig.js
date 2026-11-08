@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 
 /** Pose in character space; the imported bones have nonstandard local axes. */
-export function createZackRig(model, options = {}) {
+export function createZackRig(model) {
   const { root, bones, mesh, skeleton } = model;
   const rest = skeleton.bones.map(b => ({ position: b.position.clone(), quaternion: b.quaternion.clone(), scale: b.scale.clone() }));
   const headRest = bones.Head.quaternion.clone();
@@ -10,10 +10,8 @@ export function createZackRig(model, options = {}) {
     fore: bones[`${side}_Forearm`].getWorldQuaternion(new THREE.Quaternion()).normalize(),
   }]));
   let headTurn = 0;
-  let conservative = options.conservative ?? true;
   const gentleLimits = Object.freeze({ headYaw: 30, elbowFlex: 60, shoulderElevation: 115 });
-  const originalLimits = Object.freeze({ headYaw: 45, elbowFlex: 180, shoulderElevation: 180 });
-  const limits = () => conservative ? gentleLimits : originalLimits;
+  const limits = () => gentleLimits;
   const v = () => new THREE.Vector3();
   function rotateWorld(bone, rotation) {
     const world = bone.getWorldQuaternion(new THREE.Quaternion());
@@ -95,9 +93,10 @@ export function createZackRig(model, options = {}) {
         const sign = side === 'L' ? 1 : -1;
         // The collarbone participates in reaching; avoid folding the entire
         // shoulder through a single upper-arm rotation.
-        aim(`${side}_Clavicle`, `${side}_Upperarm`, name === 'front'
+        const clavicleDirection = name === 'front'
           ? [sign, 0.04, 0.15]
-          : name === 'hi' && side === 'R' ? [sign, 0.10, 0.04] : [sign, -0.025, 0]);
+          : name === 'hi' && side === 'R' ? [sign, 0.10, 0.04] : [sign, -0.025, 0];
+        aim(`${side}_Clavicle`, `${side}_Upperarm`, clavicleDirection);
         // Keep a little space between the sleeves and the torso.
         let upper = [sign * 0.26, -0.96, 0.05];
         let fore = [sign * 0.14, -0.98, 0.12];
@@ -108,15 +107,15 @@ export function createZackRig(model, options = {}) {
         if (name === 'hi' && side === 'R') {
           // Raise the upper arm slightly so the greeting does not depend on
           // a tightly folded elbow. Keep the palm and thumb orientation.
-          upper = conservative ? [-0.82, 0.42, 0.38] : [-0.85, -0.22, 0.35];
-          fore = conservative ? [-0.52, 0.74, 0.43] : [-0.10, 0.98, 0.17];
+          upper = [-0.82, 0.42, 0.38];
+          fore = [-0.52, 0.74, 0.43];
         }
         upper = limitDirection(upper, [0, -1, 0], limits().shoulderElevation);
         fore = limitDirection(fore, upper, limits().elbowFlex);
         aim(`${side}_Upperarm`, `${side}_Forearm`, upper);
         aim(`${side}_Forearm`, `${side}_Hand`, fore);
         if (name === 'hi' && side === 'R') facePalm(side, [0, 0, 1]);
-        if (name === 'hi' && side === 'R' && conservative) shareArmTwist(side);
+        if (name === 'hi' && side === 'R') shareArmTwist(side);
       }
     }
     setHeadTurn(headTurn);
@@ -125,11 +124,7 @@ export function createZackRig(model, options = {}) {
     currentPose = name;
   }
   let currentPose = 'rest';
-  function setConservativeMode(enabled) {
-    conservative = Boolean(enabled);
-    setPose(currentPose);
-  }
-  return { setPose, setHeadTurn, setConservativeMode,
-    get limits() { return limits(); }, get conservative() { return conservative; },
+  return { setPose, setHeadTurn,
+    get limits() { return limits(); },
     get headTurn() { return headTurn; }, get currentPose() { return currentPose; } };
 }

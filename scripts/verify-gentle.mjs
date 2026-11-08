@@ -34,14 +34,10 @@ function section() {
   return { minorRadius: Math.sqrt(Math.max(0, (a + d - Math.hypot(a - d, 2 * b)) / 2)), flexDegrees: THREE.MathUtils.radToDeg(Math.acos(THREE.MathUtils.clamp(incoming.dot(outgoing), -1, 1))) };
 }
 const baseline = section();
-rig.setConservativeMode(false); rig.setPose('hi');
-const original = section();
-rig.setConservativeMode(true);
+rig.setPose('hi');
 const gentle = section();
 assert(gentle.flexDegrees <= rig.limits.elbowFlex + 1e-5);
-assert(gentle.flexDegrees < original.flexDegrees - 15);
 assert(gentle.minorRadius / baseline.minorRadius > 0.92, 'Gentle wave must retain the sampled elbow thickness');
-assert(gentle.minorRadius > original.minorRadius * 1.25);
 for (const pose of ['down', 'front', 'hi', 'rest']) {
   rig.setPose(pose);
   model.skeleton.bones.forEach((bone, i) => assert(bone.scale.equals(restScales[i]), `${bone.name} scale changed`));
@@ -56,8 +52,7 @@ for (const pose of ['down', 'front', 'hi', 'rest']) {
 }
 rig.setHeadTurn(90); assert.equal(rig.headTurn, 30);
 rig.setHeadTurn(-90); assert.equal(rig.headTurn, -30);
-const report = { samples: samples.length, baseline, original, gentle,
-  originalThicknessRatio: original.minorRadius / baseline.minorRadius,
+const report = { samples: samples.length, baseline, gentle,
   gentleThicknessRatio: gentle.minorRadius / baseline.minorRadius,
   scalesUnchanged: true, limits: rig.limits };
 await mkdir('artifacts/gentle', { recursive: true });

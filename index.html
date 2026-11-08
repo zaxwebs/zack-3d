@@ -1,26 +1,87 @@
-<!doctype html>
+﻿<!doctype html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Zack · Geometry Studio</title>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#202020">
+  <title>Zack · 3D Viewport</title>
   <style>
-    *{box-sizing:border-box}body{margin:0;background:#11191e;color:#e8eeeb;font:14px system-ui}canvas{display:block}header{position:absolute;top:28px;left:32px;pointer-events:none}h1{margin:6px 0;font-size:28px;font-weight:500}small{color:#a4baa9;letter-spacing:2px;font-size:10px}p{color:#9daeb0;line-height:1.7}aside{position:absolute;right:24px;top:24px;width:252px;background:#182329ee;padding:22px;border:1px solid #344449;border-radius:14px}label{display:block;margin:17px 0;color:#cbd8d6;font-size:12px}input[type=range],select{width:100%;margin-top:9px}select,button{background:#25373b;color:#e8eeeb;border:1px solid #48605d;border-radius:6px;padding:9px}button{cursor:pointer}button:hover{background:#38554c}.row{display:flex;gap:8px;flex-wrap:wrap}footer{position:absolute;bottom:24px;left:32px;color:#82999b;font-size:12px}#error{color:#ffb2a6}@media(max-width:650px){aside{top:auto;bottom:45px;width:210px;padding:14px;right:12px}header{left:20px;top:16px}h1{font-size:22px}footer{left:20px;bottom:14px}}
+    :root{color-scheme:dark;font-family:Inter,"Segoe UI",system-ui,sans-serif;font-size:12px;color:#e6e6e6;background:#202020;--panel:#292929;--line:#414141;--accent:#e88b36}
+    *{box-sizing:border-box}html,body{width:100%;height:100%;margin:0;overflow:hidden}body{background:#202020}button,input,select{font:inherit}button,select{color:inherit}button{cursor:pointer}
+    .workspace{display:grid;grid-template-columns:minmax(0,1fr) 310px;width:100%;height:100%}
+    #viewport{position:relative;min-width:0;min-height:0;overflow:hidden;background:#383838}#viewport canvas{display:block;width:100%;height:100%}
+    .viewport-top,.viewport-bottom{position:absolute;z-index:1;display:flex;align-items:center;gap:9px;color:#dedede;background:#202020d9;border:1px solid #484848;border-radius:3px;font-size:11px}
+    .viewport-top{top:12px;left:12px;height:29px;padding:0 10px}.object-dot{width:7px;height:7px;border-radius:2px;background:var(--accent)}
+    .viewport-bottom{bottom:12px;left:12px;height:30px;padding:0 4px}.viewport-bottom button{height:24px;padding:0 8px;background:transparent;border:0;border-radius:2px;color:#d2d2d2}.viewport-bottom button:hover{background:#454545}.view-mode{padding:0 7px;color:#a9a9a9;border-left:1px solid #4a4a4a}
+    #error{position:absolute;left:12px;right:12px;bottom:54px;z-index:2;color:#ffb4a8;font-size:12px}
+    .properties{display:flex;flex-direction:column;min-width:0;min-height:0;background:var(--panel);border-left:1px solid #171717}
+    .panel-title{height:40px;flex:0 0 40px;display:flex;align-items:center;padding:0 14px;color:#eee;font-size:12px;font-weight:600;background:#242424;border-bottom:1px solid #1d1d1d}
+    .panel-scroll{min-height:0;overflow-y:auto;overscroll-behavior:contain}.section{border-bottom:1px solid #1b1b1b}
+    .section-title{display:flex;align-items:center;min-height:34px;padding:0 13px;color:#e1e1e1;font-size:11px;font-weight:600;background:#303030;border-bottom:1px solid #242424}
+    .section-content{padding:10px 12px 12px}.pose-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px}
+    .pose-grid button,.action-row button{min-height:27px;padding:4px 8px;text-align:left;background:#3a3a3a;border:1px solid #202020;border-radius:3px;color:#dedede}
+    .pose-grid button:hover,.action-row button:hover{background:#484848}.pose-grid button[aria-pressed="true"]{background:#654a32;border-color:#bd793b;box-shadow:inset 2px 0 var(--accent);color:#fff}
+    .field{display:block;margin:0 0 11px}.field:last-child{margin-bottom:0}
+    .field-label,.check-row{display:flex;align-items:center;justify-content:space-between;gap:10px;min-height:22px;color:#d3d3d3;font-size:11px}
+    .field-label output{color:#bdbdbd;font-variant-numeric:tabular-nums}
+    .texture-status{margin-top:8px;color:#aaa;font-size:10px;font-variant-numeric:tabular-nums}
+    select,input[type="color"]{width:100%;height:27px;margin-top:4px;padding:3px 7px;background:#3a3a3a;border:1px solid #1c1c1c;border-radius:3px}
+    select:focus-visible,button:focus-visible,input:focus-visible{outline:1px solid #f1a455;outline-offset:1px}
+    input[type="range"]{width:100%;height:16px;margin:5px 0 0;accent-color:var(--accent)}input[type="color"]{padding:2px 4px}
+    .check-row{justify-content:flex-start;cursor:pointer}.check-row input{margin:0 1px 0 0;accent-color:var(--accent)}
+    .inline-check{display:flex;gap:14px;padding-top:4px}.action-row{display:flex;gap:6px}.action-row button{flex:1;text-align:center}
+    @media(max-width:760px){.workspace{grid-template-columns:minmax(0,1fr) 270px}}
+    @media(max-width:580px){.workspace{grid-template-columns:1fr;grid-template-rows:minmax(210px,54vh) minmax(0,1fr)}.properties{border-left:0;border-top:1px solid #171717}.panel-title{height:34px;flex-basis:34px}.panel-scroll{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));align-content:start}.section{border-right:1px solid #1b1b1b}.viewport-top{top:8px;left:8px}.viewport-bottom{bottom:8px;left:8px}}
   </style>
 </head>
 <body>
-  <header><small>THREE.JS / NATIVE GEOMETRY</small><h1>Zack, reconstructed.</h1><p id="stats">Loading editable geometry…</p><p id="error"></p></header>
-  <aside><small>MODEL INSPECTOR</small>
-    <label>Pose</label>
-    <div class="row"><button data-pose="down" aria-pressed="true">Hands down</button><button data-pose="front" aria-pressed="false">Hands front</button><button data-pose="hi" aria-pressed="false">Hi 👋</button><button data-pose="rest" aria-pressed="false">T-pose</button></div>
-    <label>Surface<select id="surface"><option value="textured">Original texture</option><option value="clay">Clay geometry</option><option value="wire">Wireframe</option></select></label>
-    <label><input id="rig" type="checkbox"> Show skeleton</label>
-    <label><input id="gentle" type="checkbox" checked> Gentle poses</label>
-    <label>Head turn <input id="head" type="range" min="-30" max="30" value="0"></label>
-    <div class="row"><button id="reset">Reset model</button><button id="export">Export pose .json</button></div>
-    <p>22,862 vertices · 10,712 triangles<br>78 bones · 4K texture</p>
-  </aside>
-  <style>button[aria-pressed=true]{background:#446b58;border-color:#87b59a;color:#fff}.row button[data-pose]{flex:1 1 42%}</style>
-  <footer>Drag to orbit · Scroll to zoom · Right-drag to pan</footer>
+  <div class="workspace">
+    <main id="viewport" aria-label="3D viewport">
+      <div class="viewport-top"><span class="object-dot" aria-hidden="true"></span><span>Zack</span></div>
+      <div id="error" role="status" aria-live="polite"></div>
+      <div class="viewport-bottom"><button id="frameModel" type="button">Frame model</button><span class="view-mode">Perspective</span></div>
+    </main>
+    <aside class="properties" aria-label="Model properties">
+      <div class="panel-title">Properties</div>
+      <div class="panel-scroll">
+        <section class="section">
+          <div class="section-title">Pose</div>
+          <div class="section-content">
+            <div class="pose-grid">
+              <button data-pose="down" aria-pressed="true">Down</button><button data-pose="front" aria-pressed="false">Front</button>
+              <button data-pose="hi" aria-pressed="false">Wave</button><button data-pose="rest" aria-pressed="false">T-pose</button>
+            </div>
+          </div>
+        </section>
+        <section class="section">
+          <div class="section-title">Texture resolution</div>
+          <div class="section-content">
+            <div class="pose-grid" role="group" aria-label="Texture resolution">
+              <button type="button" data-texture-size="1024" aria-label="1024 by 1024 texture" aria-pressed="false">1K</button>
+              <button type="button" data-texture-size="2048" aria-label="2048 by 2048 texture" aria-pressed="false">2K</button>
+            </div>
+            <div id="textureStatus" class="texture-status" role="status" aria-live="polite"></div>
+          </div>
+        </section>
+        <section class="section">
+          <div class="section-title">Model</div>
+          <div class="section-content">
+            <label class="field" for="surface"><span class="field-label">Surface</span>
+              <select id="surface"><option value="textured">Textured</option><option value="clay">Clay</option><option value="wire">Wireframe</option></select>
+            </label>
+            <label class="check-row"><input id="rig" type="checkbox"> Skeleton</label>
+            <label class="field" for="head" style="margin-top:10px"><span class="field-label">Head turn <output id="headValue">0°</output></span>
+              <input id="head" type="range" min="-30" max="30" value="0">
+            </label>
+          </div>
+        </section>
+        <section class="section">
+          <div class="section-title">Actions</div>
+          <div class="section-content action-row"><button id="reset" type="button">Reset pose</button><button id="export" type="button">Export JSON</button></div>
+        </section>
+      </div>
+    </aside>
+  </div>
   <script type="module" src="/src/main.js"></script>
 </body>
 </html>

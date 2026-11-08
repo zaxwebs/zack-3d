@@ -9,11 +9,13 @@ try {
   page.on('pageerror', error => errors.push(error.message));
   await page.goto('http://127.0.0.1:5173/');
   await page.waitForFunction(() => window.zack, { timeout: 30000 });
-  assert(await page.isChecked('#gentle'));
-  await page.uncheck('#gentle');
-  assert.equal(await page.locator('#head').getAttribute('max'), '45');
-  await page.check('#gentle');
-  assert.equal(await page.locator('#head').getAttribute('max'), '30');
+  assert.equal(await page.locator('[data-texture-size="2048"]').getAttribute('aria-pressed'), 'true');
+  await page.click('[data-texture-size="1024"]');
+  await page.waitForFunction(() => window.zack.textureSize === 1024);
+  assert.equal(await page.evaluate(() => window.zack.material.map.image.width), 1024);
+  await page.click('[data-texture-size="2048"]');
+  await page.waitForFunction(() => window.zack.textureSize === 2048);
+  assert.equal(await page.evaluate(() => window.zack.material.map.image.width), 2048);
   await page.click('[data-pose="rest"]');
   const report = await page.evaluate(async () => {
     const THREE = await import('/node_modules/three/build/three.module.js');
