@@ -1,5 +1,5 @@
 {
-  "format": "zack-three-geometry-v1",
+  "format": "zack-three-geometry-v2",
   "arrays": {
     "position": {
       "byteOffset": 0,
@@ -23,22 +23,23 @@
       "byteOffset": 731584,
       "count": 22862,
       "itemSize": 4,
-      "type": "Uint16Array"
+      "type": "Uint8Array"
     },
     "skinWeight": {
-      "byteOffset": 914480,
+      "byteOffset": 823032,
       "count": 22862,
       "itemSize": 4,
-      "type": "Float32Array"
+      "type": "Uint8Array",
+      "normalized": true
     },
     "index": {
-      "byteOffset": 1280272,
+      "byteOffset": 914480,
       "count": 32136,
       "itemSize": 1,
-      "type": "Uint32Array"
+      "type": "Uint16Array"
     },
     "inverseBindMatrices": {
-      "byteOffset": 1408816,
+      "byteOffset": 978752,
       "count": 78,
       "itemSize": 16,
       "type": "Float32Array"

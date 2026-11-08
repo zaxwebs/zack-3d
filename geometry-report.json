@@ -24,9 +24,13 @@
   ],
   "degenerateTriangles": 0,
   "maxSkinWeightSumError": 1.7881393432617188e-07,
+  "maxSkinWeightQuantizationError": 0.0027312582437004906,
+  "packedGeometryBytes": 983744,
   "notes": [
-    "UV seams and original normals preserved.",
+    "Position, normal, UV, and topology data are preserved.",
+    "Joint indices use 8-bit storage, skin weights use normalized 8-bit storage, and triangle indices use 16-bit storage.",
+    "Skin weights are rounded with a largest-remainder pass so each vertex retains a total weight of 255.",
     "One continuous mesh, not separate anatomical objects.",
-    "Geometry is extracted exactly, not remeshed or parametrically reconstructed."
+    "Geometry is extracted without remeshing or topology simplification."
   ]
 }

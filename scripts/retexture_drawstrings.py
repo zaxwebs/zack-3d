@@ -7,7 +7,7 @@ from PIL import Image
 ROOT = Path(__file__).resolve().parents[1]
 manifest = json.loads((ROOT / 'public/model/manifest.json').read_text())
 binary = (ROOT / 'public/model/geometry.bin').read_bytes()
-types = {'Float32Array': '<f4', 'Uint32Array': '<u4', 'Uint16Array': '<u2'}
+types = {'Float32Array': '<f4', 'Uint32Array': '<u4', 'Uint16Array': '<u2', 'Uint8Array': '<u1'}
 arrays = {name: np.frombuffer(binary, dtype=types[a['type']], offset=a['byteOffset'], count=a['count'] * a['itemSize']).reshape(-1, a['itemSize']) for name, a in manifest['arrays'].items()}
 nodes = manifest['nodes']
 parents = {child: index for index, node in enumerate(nodes) for child in node.get('children', [])}

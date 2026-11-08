@@ -32,6 +32,33 @@ try {
       const b = model.geometry.attributes[name].array;
       attributes[name] = a.length === b.length && a.every((v, i) => v === b[i]);
     }
+    const packedManifest = await fetch('/model/manifest.json').then(response => response.json());
+    const packedBuffer = await fetch('/model/geometry.bin').then(response => response.arrayBuffer());
+    const packedJointsLayout = packedManifest.arrays.skinIndex;
+    const packedJoints = new Uint8Array(packedBuffer, packedJointsLayout.byteOffset,
+      packedJointsLayout.count * packedJointsLayout.itemSize);
+    const sourceJoints = source.geometry.attributes.skinIndex.array;
+    const packedJointIndicesExact = sourceJoints.every((value, index) => value === packedJoints[index]);
+    const packedWeightsLayout = packedManifest.arrays.skinWeight;
+    const packedWeights = new Uint8Array(packedBuffer, packedWeightsLayout.byteOffset,
+      packedWeightsLayout.count * packedWeightsLayout.itemSize);
+    const sourceWeights = source.geometry.attributes.skinWeight.array;
+    let maxWeightQuantizationError = 0;
+    let packedWeightSumsExact = true;
+    for (let vertex = 0; vertex < packedWeightsLayout.count; vertex++) {
+      let sourceSum = 0, packedSum = 0;
+      for (let slot = 0; slot < 4; slot++) {
+        sourceSum += sourceWeights[vertex * 4 + slot];
+        packedSum += packedWeights[vertex * 4 + slot];
+      }
+      packedWeightSumsExact &&= packedSum === 255;
+      for (let slot = 0; slot < 4; slot++) {
+        const normalizedSource = sourceWeights[vertex * 4 + slot] / sourceSum;
+        const decodedPacked = packedWeights[vertex * 4 + slot] / 255;
+        maxWeightQuantizationError = Math.max(maxWeightQuantizationError,
+          Math.abs(normalizedSource - decodedPacked));
+      }
+    }
     const a = new THREE.Vector3(), b = new THREE.Vector3();
     let maxWorldVertexError = 0;
     for (let i = 0; i < model.geometry.attributes.position.count; i++) {
@@ -49,6 +76,13 @@ try {
       shoulderPivots[side] = { offset: after.sub(before).toArray(), elbowRestError: elbowBefore.distanceTo(elbowAfter) };
     }
     return { attributes, indexEqual: sourceIndex.every((v, i) => v === model.geometry.index.array[i]),
+      packedJointIndicesExact,
+      packedTypes: { index: packedManifest.arrays.index.type,
+        skinIndex: packedManifest.arrays.skinIndex.type,
+        skinWeight: packedWeightsLayout.type,
+        skinWeightNormalized: packedWeightsLayout.normalized,
+        geometryBytes: packedBuffer.byteLength },
+      maxWeightQuantizationError, packedWeightSumsExact,
       shoulderPivots,
       maxWorldVertexError, vertices: model.geometry.attributes.position.count,
       triangles: model.geometry.index.count / 3, bones: model.skeleton.bones.length,
@@ -57,6 +91,12 @@ try {
   });
   for (const name of ['position', 'normal', 'uv']) assert(report.attributes[name]);
   assert.equal(report.attributes.skinWeight, false, 'Chest skin weights should differ from the source auto-rig');
+  assert(report.packedJointIndicesExact, 'Packed joint indices must match the source');
+  assert.deepEqual(report.packedTypes, { index: 'Uint16Array', skinIndex: 'Uint8Array',
+    skinWeight: 'Uint8Array', skinWeightNormalized: true, geometryBytes: 983744 });
+  assert(report.packedWeightSumsExact, 'Packed weights must sum to 255 per vertex');
+  assert(report.maxWeightQuantizationError < 1 / 255,
+    `Skin weight quantization error too large: ${report.maxWeightQuantizationError}`);
   assert(report.indexEqual);
   assert(report.maxWorldVertexError < 1e-6, `World vertex mismatch: ${report.maxWorldVertexError}`);
   for (const side of ['L', 'R']) {

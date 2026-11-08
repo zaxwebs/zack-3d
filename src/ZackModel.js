@@ -2,10 +2,11 @@ import * as THREE from 'three';
 
 /** Build a native, editable Three.js model without GLTFLoader or a GLB. */
 export function createZackModel(manifest, buffer, texture = null) {
-  const constructors = { Float32Array, Uint32Array, Uint16Array };
+  const constructors = { Float32Array, Uint32Array, Uint16Array, Uint8Array };
   const read = (name) => {
     const a = manifest.arrays[name];
-    return new constructors[a.type](buffer, a.byteOffset, a.count * a.itemSize).slice();
+    const data = new constructors[a.type](buffer, a.byteOffset, a.count * a.itemSize);
+    return a.normalized ? Float32Array.from(data, value => value / 255) : data.slice();
   };
   const geometry = new THREE.BufferGeometry();
   geometry.name = 'ZackGeometry';

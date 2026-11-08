@@ -74,6 +74,8 @@ The lossless WebP texture repairs the drawstring roots using mesh geometry. It p
 - No animation clips or degenerate triangles
 - Original source scale retained; world dimensions approximately 0.862 × 1.000 × 0.391 units
 
+`geometry.bin` uses 16-bit triangle indices and 8-bit joint indices. Skin weights are stored as normalized 8-bit values that sum to 255 for each vertex, then decoded to floats before runtime rig corrections. Positions, normals, UVs, and topology remain unchanged. The packed geometry is 983,744 bytes (about 0.94 MiB); `geometry-report.json` records its maximum weight quantization error.
+
 See `geometry-report.json` for extracted measurements and `artifacts/verification.json` for comparison results. `scripts/extract_geometry.py` reproduces the extracted assets using Python, NumPy, and Pillow. The extractor is specific to this source's uncompressed, non-interleaved accessors.
 
 With the dev server running, `npm test` compares every geometry attribute and every skinned world vertex against `GLTFLoader`, exercises viewer controls, checks JSON export/import, and saves screenshots. The test uses the installed Windows Chrome path in `scripts/verify.mjs`; adjust that path for another machine. `npm run build` produces the standalone viewer in `dist/`.
