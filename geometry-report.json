@@ -1,0 +1,32 @@
+{
+  "source": "Zack 3D V2.glb",
+  "generator": "Tripo",
+  "meshCount": 1,
+  "vertices": 22862,
+  "triangles": 10712,
+  "bones": 78,
+  "animationClips": 0,
+  "localBounds": {
+    "min": [
+      -0.19565217196941376,
+      -0.4311186969280243,
+      -0.5
+    ],
+    "max": [
+      0.19565217196941376,
+      0.4311186969280243,
+      0.5
+    ]
+  },
+  "textureSize": [
+    4096,
+    4096
+  ],
+  "degenerateTriangles": 0,
+  "maxSkinWeightSumError": 1.7881393432617188e-07,
+  "notes": [
+    "UV seams and original normals preserved.",
+    "One continuous mesh, not separate anatomical objects.",
+    "Geometry is extracted exactly, not remeshed or parametrically reconstructed."
+  ]
+}

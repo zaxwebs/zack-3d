@@ -1,0 +1,73 @@
+# Zack: editable Three.js model
+
+This project reconstructs `Zack 3D V2.glb` as native Three.js `BufferGeometry`, a `SkinnedMesh`, and a named skeleton. The model module does not load the GLB. Extracted arrays, rig metadata, and the original texture live in `public/model/`.
+
+This is an exact geometry conversion, not a newly authored parametric character. It preserves the source topology and UV seams. Hair, clothing, eyes, and body are part of one textured mesh; they are not separate editable objects.
+
+## Preview
+
+```sh
+npm install
+npm run dev
+```
+
+Open http://127.0.0.1:5173/. Orbit, zoom, inspect clay/wireframe surfaces, show the skeleton, pose the head/shoulder, and export a native Three.js JSON scene.
+
+The viewer starts with **Hands down**. Choose **Hands front** or **Hi** for the other poses, or **T-pose** to inspect the rest pose. Shoulder rotations use character-space arm directions and coordinated clavicles rather than the imported bone's oblique local axes. The wave rotates the forearm and cuff together to present the open palm. Bind geometry is retained; chest skin weights are corrected to prevent the arms pulling the torso inward.
+
+```js
+import { createZackRig } from './ZackRig.js';
+const rig = createZackRig(zack); // Create once, before posing.
+rig.setPose('down'); // 'front', 'hi', or 'rest'
+```
+
+Pose screenshots and self-contained Three.js scenes are in `artifacts/poses/`. Pose selection is immediate; no looping animation is applied.
+
+The model factory moves the source shoulder pivots outward by 0.03 scene units per side, toward the sleeve caps. It compensates child bone positions and inverse bind matrices so the rest mesh and elbow positions stay unchanged. `root.userData.shoulderCorrections` records the original and corrected pivots. Reset uses the corrected rig.
+
+Chest vertices are anchored to the spine by removing leaked arm/clavicle weights in the torso center and smoothly restoring those influences toward the sleeve caps (0.085–0.145 units from the centerline). Weights remain normalized with at most four influences per vertex. `root.userData.chestWeightCorrection` records the correction. The pose tests measure central chest displacement against the rest pose to catch torso shrinkage.
+
+## Use in another Three.js project
+
+Copy `src/ZackModel.js` and `public/model/` into your project. Install `three`, then:
+
+```js
+import { loadZackModel } from './ZackModel.js';
+
+const zack = await loadZackModel('/model/');
+scene.add(zack.root);
+
+// Pose a named bone. Rotations apply in the source bone's local axes.
+zack.bones.Head.rotateY(0.2);
+
+// Edit a vertex in mesh-local coordinates.
+const position = zack.geometry.getAttribute('position');
+position.setY(0, position.getY(0) + 0.01);
+zack.refreshGeometry();
+
+// Inspect vertex indices by their strongest influencing bone.
+console.log(zack.regions.Head);
+
+// Restore original bone transforms, vertices, and normals.
+zack.reset();
+
+// Remove and release owned resources when finished.
+scene.remove(zack.root);
+zack.dispose();
+```
+
+`regions` is a convenience map based on dominant skin weights, not a clothing or anatomical segmentation. Mesh-local coordinates use the source export's orientation. For deliberate surface edits, consider all coincident vertices along UV seams. `refreshGeometry()` recalculates normals; call `refreshGeometry(false)` if supplying your own normals.
+
+The default loader fetches three files: `manifest.json`, `geometry.bin`, and `basecolor.jpg`. You can also call `createZackModel(manifest, arrayBuffer, texture)` directly. Each instance gets independent geometry and skeleton data. Exported `artifacts/zack.three.json` is self-contained and can be read with `THREE.ObjectLoader().loadAsync(url)`.
+
+## Source inspection and verification
+
+- 1 skinned mesh, 22,862 vertices, 10,712 triangles
+- 78 named bones, four skin influences per vertex
+- 4096 × 4096 base-color texture
+- No animation clips or degenerate triangles
+- Original source scale retained; world dimensions approximately 0.862 × 1.000 × 0.391 units
+
+See `geometry-report.json` for extracted measurements and `artifacts/verification.json` for comparison results. `scripts/extract_geometry.py` reproduces the extracted assets using Python, NumPy, and Pillow. The extractor is specific to this source's uncompressed, non-interleaved accessors.
+
+With the dev server running, `npm test` compares every geometry attribute and every skinned world vertex against `GLTFLoader`, exercises viewer controls, checks JSON export/import, and saves screenshots. The test uses the installed Windows Chrome path in `scripts/verify.mjs`; adjust that path for another machine. `npm run build` produces the standalone viewer in `dist/`.
