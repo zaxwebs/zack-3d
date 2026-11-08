@@ -1,5 +1,9 @@
 import * as THREE from 'three';
 import { repairHandSeams } from './repairHandSeams.js';
+import { repairNonManifoldSliver } from './repairNonManifoldSliver.js';
+import { repairShoeSoleHoles } from './repairShoeSoleHoles.js';
+import { repairShoeLaceGaps } from './repairShoeLaceGaps.js';
+import { repairClothingSeams } from './repairClothingSeams.js';
 
 /** Build a native, editable Three.js model without GLTFLoader or a GLB. */
 export function createZackModel(manifest, buffer, texture = null) {
@@ -71,6 +75,10 @@ export function createZackModel(manifest, buffer, texture = null) {
   }
   root.userData.shoulderCorrections = shoulderCorrections;
   root.userData.handSeamCorrection = repairHandSeams(geometry, skeleton, bones);
+  root.userData.nonManifoldSliverCorrection = repairNonManifoldSliver(geometry);
+  root.userData.shoeSoleCorrection = repairShoeSoleHoles(geometry);
+  root.userData.shoeLaceGapCorrection = repairShoeLaceGaps(geometry);
+  root.userData.clothingSeamCorrection = repairClothingSeams(geometry);
   const restTransforms = skeleton.bones.map(bone => ({ position: bone.position.clone(), quaternion: bone.quaternion.clone(), scale: bone.scale.clone() }));
   const restPositions = geometry.attributes.position.array.slice();
   const restNormals = geometry.attributes.normal.array.slice();

@@ -3,6 +3,8 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { loadZackModel } from './ZackModel.js';
 import { createZackRig, POSES } from './ZackRig.js';
+import { MocapController } from './MocapController.js';
+import { MOCAP_CONFIG } from './mocapConfig.js';
 
 const viewport = document.querySelector('#viewport');
 const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
@@ -34,6 +36,7 @@ const grid = new THREE.GridHelper(100, 100, 0x777777, 0x555555);
 grid.material.transparent = true;
 grid.material.opacity = 0.28;
 grid.material.depthWrite = false;
+grid.visible = document.querySelector('#ground').checked;
 scene.add(grid);
 
 function resizeViewport() {
@@ -52,6 +55,8 @@ const output = selector => document.querySelector(selector);
 let model;
 let rig;
 let helper;
+let selectedPose = 'down';
+let mocapController;
 let cameraTarget = new THREE.Vector3();
 function frameModel() {
   if (!model) return;
@@ -125,6 +130,8 @@ try {
     output('#poses').append(button);
   }
   const selectPose = name => {
+    selectedPose = name;
+    mocapController.select('static', { restorePose: false });
     rig.setPose(name);
     output('#poseDescription').textContent = POSES[name].description;
     applyHead();
@@ -135,6 +142,18 @@ try {
   document.querySelectorAll('[data-pose]').forEach(button => {
     button.addEventListener('click', () => selectPose(button.dataset.pose));
   });
+
+  mocapController = new MocapController({
+    model,
+    container: output('#animations'),
+    description: output('#animationDescription'),
+    sourceUrl: MOCAP_CONFIG.sourceUrl,
+    config: MOCAP_CONFIG,
+    onStatic: () => {
+      rig.setPose(selectedPose);
+      applyHead();
+    },
+  });
   selectPose('down');
 
   output('#surface').addEventListener('change', event => {
@@ -144,7 +163,14 @@ try {
     model.material.needsUpdate = true;
   });
   output('#rig').addEventListener('change', event => { helper.visible = event.target.checked; });
-  output('#head').addEventListener('input', applyHead);
+  output('#ground').addEventListener('change', event => { grid.visible = event.target.checked; });
+  output('#head').addEventListener('input', () => {
+    if (mocapController.activeName !== 'static') {
+      mocapController.select('static');
+    } else {
+      applyHead();
+    }
+  });
   output('#reset').addEventListener('click', () => {
     model.reset();
     output('#head').value = 0;
@@ -162,13 +188,17 @@ try {
 
   window.zack = model;
   window.zackRig = rig;
-  window.studio = { scene, camera, renderer, controls };
+  window.studio = { scene, camera, renderer, controls, mocapActions: mocapController.actions, mocapController };
+  mocapController.load().catch(() => {});
 } catch (error) {
   output('#error').textContent = error.message;
   console.error(error);
 }
 
+const animationClock = new THREE.Clock();
 renderer.setAnimationLoop(() => {
+  const delta = Math.min(animationClock.getDelta(), 0.05);
+  mocapController?.update(delta);
   controls.update();
   key.target.position.copy(controls.target);
   renderer.render(scene, camera);

@@ -100,6 +100,10 @@ export function createZackRig(model) {
       b.quaternion.copy(rest[i].quaternion);
       b.scale.copy(rest[i].scale);
     });
+    const rotateCharacter = (boneName, axis, degrees) => {
+      const worldAxis = v().fromArray(axis).transformDirection(root.matrixWorld);
+      rotateWorld(bones[boneName], new THREE.Quaternion().setFromAxisAngle(worldAxis, THREE.MathUtils.degToRad(degrees)));
+    };
     if (name !== 'rest') {
       for (const side of ['L', 'R']) {
         const sign = side === 'L' ? 1 : -1;
@@ -134,10 +138,6 @@ export function createZackRig(model) {
         if (name === 'hi' && side === 'R') shareArmTwist(side);
       }
     }
-    const rotateCharacter = (boneName, axis, degrees) => {
-      const worldAxis = v().fromArray(axis).transformDirection(root.matrixWorld);
-      rotateWorld(bones[boneName], new THREE.Quaternion().setFromAxisAngle(worldAxis, THREE.MathUtils.degToRad(degrees)));
-    };
     if (['twist', 'lean', 'bow'].includes(name)) {
       const axis = name === 'twist' ? [0, 1, 0] : name === 'lean' ? [0, 0, 1] : [1, 0, 0];
       const degrees = name === 'lean' ? 4 : 6;

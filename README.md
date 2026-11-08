@@ -23,9 +23,9 @@ const rig = createZackRig(zack); // Create once, before posing.
 rig.setPose('down'); // Also: front, hi, rest, elbows, twist, lean, bow, knee.
 ```
 
-Pose screenshots and self-contained Three.js scenes are in `artifacts/poses/`. Pose selection is immediate; no looping animation is applied.
+Pose screenshots and self-contained Three.js scenes are in `artifacts/poses/`. Pose selection is immediate. The Mocap animation section loads the imported preset collection from `public/animations/preset-mocap.glb`, then retargets each clip onto Zack's skeleton the first time it is selected and crossfades between cached actions. **Static** returns to the selected pose.
 
-The viewer provides **Arms down**, **Arms forward**, **Right-hand wave**, **T-pose**, **Bend elbows**, **Torso twist**, **Side bend**, **Bend forward**, and **Right knee lift**. Each preset describes the joints it exercises below the buttons. Enable **Skeleton** and orbit or zoom to inspect the bends. These are static deformation checks, not balanced animation poses: the raised leg is not ground-constrained. Switching presets restores all bone transforms before applying the next pose, and preserves the head-turn slider. The exported `POSES` registry in `src/ZackRig.js` defines the available names, labels, and descriptions. Run `node scripts/verify-poses.mjs` for standalone preset checks.
+The viewer provides **Arms down**, **Arms forward**, **Right-hand wave**, **T-pose**, **Bend elbows**, **Torso twist**, **Side bend**, **Bend forward**, and **Right knee lift**. Each preset describes the joints it exercises below the buttons. Enable **Skeleton** and orbit or zoom to inspect the bends. These are static deformation checks, not balanced animation poses: the raised leg is not ground-constrained. Switching presets restores all bone transforms before applying the next pose, and preserves the head-turn slider. The exported `POSES` registry in `src/ZackRig.js` defines the available names, labels, and descriptions. `src/MocapController.js` owns lazy clip retargeting, action caching, and transitions; `loadMocapAnimations()` in `src/MocapAnimations.js` remains the eager-loading helper for another Three.js scene. Source-specific retarget settings live in `src/mocapConfig.js`. Run `node scripts/verify-poses.mjs` for standalone preset checks.
 
 The model factory moves the source shoulder pivots outward by 0.03 scene units per side, toward the sleeve caps. It compensates child bone positions and inverse bind matrices so the rest mesh and elbow positions stay unchanged. `root.userData.shoulderCorrections` records the original and corrected pivots. Reset uses the corrected rig.
 
@@ -70,12 +70,12 @@ The lossless WebP texture repairs the drawstring roots using mesh geometry. It p
 
 ## Source inspection and verification
 
-The source mesh has a narrow open slit at the base of each thumb. `repairHandSeams()` detects only four-edge hand openings with a sub-0.001-unit diagonal and stitches their near-coincident corners. It adjusts eight existing vertex records by at most 0.000245 model units, sharing position, normal, and normalized skin weights across the joined corners while preserving UV coordinates, vertex count, and triangle indices. Larger openings, clothing boundaries, and the source files are left unchanged. `root.userData.handSeamCorrection` records the repair. Reset retains it, and `node scripts/verify-hand-seams.mjs` checks closure in every preset.
+The source mesh has a narrow open slit at the base of each thumb. `repairHandSeams()` detects only four-edge hand openings with a sub-0.001-unit diagonal and stitches their near-coincident corners. It adjusts eight existing vertex records by at most 0.000245 model units, sharing position, normal, and normalized skin weights across the joined corners while preserving UV coordinates, vertex count, and triangle indices. A separate load-time repair removes one isolated sliver triangle near the head that made a welded edge non-manifold; the runtime mesh has 10,711 triangles. Larger openings, clothing boundaries, and the source files are left unchanged. `root.userData.handSeamCorrection` and `root.userData.nonManifoldSliverCorrection` record the repairs. Reset retains them, and `node scripts/verify-hand-seams.mjs` checks hand closure in every preset.
 
-- 1 skinned mesh, 22,862 vertices, 10,712 triangles
+- 1 skinned mesh, 22,862 vertices, 10,712 source triangles (10,711 at runtime after repair)
 - 78 named bones, four skin influences per vertex
 - 4096 × 4096 base-color texture
-- No animation clips or degenerate triangles
+- No embedded Zack animation clips or degenerate triangles
 - Original source scale retained; world dimensions approximately 0.862 × 1.000 × 0.391 units
 
 `geometry.bin` uses 16-bit triangle indices and 8-bit joint indices. Skin weights are stored as normalized 8-bit values that sum to 255 for each vertex, then decoded to floats before runtime rig corrections. Positions, normals, UVs, and topology remain unchanged. The packed geometry is 983,744 bytes (about 0.94 MiB); `geometry-report.json` records its maximum weight quantization error.
