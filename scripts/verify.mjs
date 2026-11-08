@@ -113,6 +113,16 @@ try {
   assert(await page.evaluate(() => Math.abs(window.zack.bones.Head.quaternion.x) > 0));
   await page.click('#reset');
   assert.equal(await page.locator('#head').inputValue(), '0');
+  const { POSES } = await import('../src/ZackRig.js');
+  assert.equal(await page.locator('[data-pose]').count(), Object.keys(POSES).length);
+  for (const [name, pose] of Object.entries(POSES)) {
+    await page.click(`[data-pose="${name}"]`);
+    assert.equal(await page.evaluate(() => window.zackRig.currentPose), name);
+    assert.equal(await page.locator('[data-pose][aria-pressed="true"]').count(), 1);
+    assert.equal(await page.locator('#poseDescription').textContent(), pose.description);
+  }
+  await page.click('#reset');
+  assert.equal(await page.evaluate(() => window.zackRig.currentPose), 'down');
   const downloadPromise = page.waitForEvent('download');
   await page.click('#export');
   const download = await downloadPromise;
@@ -132,3 +142,4 @@ try {
 await import('./inspect-poses.mjs');
 await import('./verify-rig.mjs');
 await import('./verify-gentle.mjs');
+await import('./verify-poses.mjs');

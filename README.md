@@ -20,10 +20,12 @@ Gentle controls limit head yaw to ±30°, elbow flex to 60°, and arm elevation 
 ```js
 import { createZackRig } from './ZackRig.js';
 const rig = createZackRig(zack); // Create once, before posing.
-rig.setPose('down'); // 'front', 'hi', or 'rest'
+rig.setPose('down'); // Also: front, hi, rest, elbows, twist, lean, bow, knee.
 ```
 
 Pose screenshots and self-contained Three.js scenes are in `artifacts/poses/`. Pose selection is immediate; no looping animation is applied.
+
+The viewer provides **Arms down**, **Arms forward**, **Right-hand wave**, **T-pose**, **Bend elbows**, **Torso twist**, **Side bend**, **Bend forward**, and **Right knee lift**. Each preset describes the joints it exercises below the buttons. Enable **Skeleton** and orbit or zoom to inspect the bends. These are static deformation checks, not balanced animation poses: the raised leg is not ground-constrained. Switching presets restores all bone transforms before applying the next pose, and preserves the head-turn slider. The exported `POSES` registry in `src/ZackRig.js` defines the available names, labels, and descriptions. Run `node scripts/verify-poses.mjs` for standalone preset checks.
 
 The model factory moves the source shoulder pivots outward by 0.03 scene units per side, toward the sleeve caps. It compensates child bone positions and inverse bind matrices so the rest mesh and elbow positions stay unchanged. `root.userData.shoulderCorrections` records the original and corrected pivots. Reset uses the corrected rig.
 

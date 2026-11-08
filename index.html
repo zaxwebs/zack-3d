@@ -31,6 +31,7 @@
     .inline-check{display:flex;gap:14px;padding-top:4px}.action-row{display:flex;gap:6px}.action-row button{flex:1;text-align:center}
     @media(max-width:760px){.workspace{grid-template-columns:minmax(0,1fr) 270px}}
     @media(max-width:580px){.workspace{grid-template-columns:1fr;grid-template-rows:minmax(210px,54vh) minmax(0,1fr)}.properties{border-left:0;border-top:1px solid #171717}.panel-title{height:34px;flex-basis:34px}.panel-scroll{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));align-content:start}.section{border-right:1px solid #1b1b1b}.viewport-top{top:8px;left:8px}}
+    #poseDescription{margin:9px 0 0;color:#b8b8b8;font-size:11px;line-height:1.5;min-height:33px}
   </style>
 </head>
 <body>
@@ -45,10 +46,8 @@
         <section class="section">
           <div class="section-title">Pose</div>
           <div class="section-content">
-            <div class="pose-grid">
-              <button data-pose="down" aria-pressed="true">Down</button><button data-pose="front" aria-pressed="false">Front</button>
-              <button data-pose="hi" aria-pressed="false">Wave</button><button data-pose="rest" aria-pressed="false">T-pose</button>
-            </div>
+            <div id="poses" class="pose-grid" role="group" aria-label="Pose presets"></div>
+            <p id="poseDescription" role="status" aria-live="polite"></p>
           </div>
         </section>
         <section class="section">

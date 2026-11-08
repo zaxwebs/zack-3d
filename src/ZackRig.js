@@ -1,5 +1,17 @@
 import * as THREE from 'three';
 
+export const POSES = Object.freeze({
+  down: { label: 'Arms down', description: 'Relaxed shoulders and arms.' },
+  front: { label: 'Arms forward', description: 'Shoulders reaching forward with open elbows.' },
+  hi: { label: 'Right-hand wave', description: 'Right shoulder, elbow, and palm rotation.' },
+  rest: { label: 'T-pose', description: 'Original rest pose for comparing joint deformation.' },
+  elbows: { label: 'Bend elbows', description: 'Both elbows bend forward to 60 degrees.' },
+  twist: { label: 'Torso twist', description: 'A 24-degree turn shared across the waist and spine.' },
+  lean: { label: 'Side bend', description: 'A 16-degree side bend shared across the waist and spine.' },
+  bow: { label: 'Bend forward', description: 'A 24-degree forward bend shared across the waist and spine.' },
+  knee: { label: 'Right knee lift', description: 'Right hip lifts 40 degrees with a 60-degree knee bend.' },
+});
+
 /** Pose in character space; the imported bones have nonstandard local axes. */
 export function createZackRig(model) {
   const { root, bones, mesh, skeleton } = model;
@@ -82,7 +94,7 @@ export function createZackRig(model) {
     root.updateMatrixWorld(true);
   }
   function setPose(name) {
-    if (!['rest', 'down', 'front', 'hi'].includes(name)) throw new Error(`Unknown pose: ${name}`);
+    if (!Object.hasOwn(POSES, name)) throw new Error(`Unknown pose: ${name}`);
     skeleton.bones.forEach((b, i) => {
       b.position.copy(rest[i].position);
       b.quaternion.copy(rest[i].quaternion);
@@ -110,6 +122,10 @@ export function createZackRig(model) {
           upper = [-0.82, 0.42, 0.38];
           fore = [-0.52, 0.74, 0.43];
         }
+        if (name === 'elbows') {
+          upper = [sign * 0.26, -0.96, 0];
+          fore = [sign * 0.13, -0.48, 0.866];
+        }
         upper = limitDirection(upper, [0, -1, 0], limits().shoulderElevation);
         fore = limitDirection(fore, upper, limits().elbowFlex);
         aim(`${side}_Upperarm`, `${side}_Forearm`, upper);
@@ -117,6 +133,21 @@ export function createZackRig(model) {
         if (name === 'hi' && side === 'R') facePalm(side, [0, 0, 1]);
         if (name === 'hi' && side === 'R') shareArmTwist(side);
       }
+    }
+    const rotateCharacter = (boneName, axis, degrees) => {
+      const worldAxis = v().fromArray(axis).transformDirection(root.matrixWorld);
+      rotateWorld(bones[boneName], new THREE.Quaternion().setFromAxisAngle(worldAxis, THREE.MathUtils.degToRad(degrees)));
+    };
+    if (['twist', 'lean', 'bow'].includes(name)) {
+      const axis = name === 'twist' ? [0, 1, 0] : name === 'lean' ? [0, 0, 1] : [1, 0, 0];
+      const degrees = name === 'lean' ? 4 : 6;
+      for (const boneName of ['Waist', 'Spine01', 'Spine02']) {
+        rotateCharacter(boneName, axis, boneName === 'Waist' ? degrees * 2 : degrees);
+      }
+    }
+    if (name === 'knee') {
+      rotateCharacter('R_Thigh', [1, 0, 0], -40);
+      rotateCharacter('R_Calf', [1, 0, 0], 60);
     }
     setHeadTurn(headTurn);
     root.updateMatrixWorld(true);

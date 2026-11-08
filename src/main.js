@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { loadZackModel } from './ZackModel.js';
-import { createZackRig } from './ZackRig.js';
+import { createZackRig, POSES } from './ZackRig.js';
 
 const viewport = document.querySelector('#viewport');
 const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
@@ -115,8 +115,18 @@ try {
     rig.setHeadTurn(Number(slider.value));
     output('#headValue').value = `${slider.value}°`;
   };
+  for (const [name, pose] of Object.entries(POSES)) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.dataset.pose = name;
+    button.textContent = pose.label;
+    button.title = pose.description;
+    button.setAttribute('aria-pressed', 'false');
+    output('#poses').append(button);
+  }
   const selectPose = name => {
     rig.setPose(name);
+    output('#poseDescription').textContent = POSES[name].description;
     applyHead();
     document.querySelectorAll('[data-pose]').forEach(button => {
       button.setAttribute('aria-pressed', String(button.dataset.pose === name));
