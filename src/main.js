@@ -69,8 +69,6 @@ function frameModel() {
   controls.maxDistance = size.y * 8;
   controls.update();
 }
-output('#frameModel').addEventListener('click', frameModel);
-
 try {
   model = await loadZackModel(`${import.meta.env.BASE_URL}model/`);
   scene.add(model.root);
@@ -154,7 +152,7 @@ try {
 
   window.zack = model;
   window.zackRig = rig;
-  window.studio = { scene, camera, renderer, controls, frameModel };
+  window.studio = { scene, camera, renderer, controls };
 } catch (error) {
   output('#error').textContent = error.message;
   console.error(error);
