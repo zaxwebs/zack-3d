@@ -21,6 +21,7 @@ export class MocapController {
     this.actionPromises = new Map();
     this.sourceState = null;
     this.activeName = STATIC_NAME;
+    this.playing = false;
     this.selectionId = 0;
 
     this.addButton({
@@ -31,12 +32,12 @@ export class MocapController {
     this.setControls(STATIC_NAME);
   }
 
-  addButton({ name, label, title }) {
+  addButton({ name, label, title, description }) {
     const button = document.createElement('button');
     button.type = 'button';
     button.dataset.animation = name;
     button.textContent = label;
-    button.title = title;
+    button.title = title ?? description ?? label;
     button.setAttribute('aria-pressed', 'false');
     this.container.append(button);
     button.addEventListener('click', () => { void this.select(name); });
@@ -96,6 +97,7 @@ export class MocapController {
     if (name === STATIC_NAME) {
       this.mixer.stopAllAction();
       this.activeName = STATIC_NAME;
+      this.playing = false;
       if (restorePose) this.onStatic?.();
       this.setControls(STATIC_NAME);
       return Promise.resolve();
@@ -115,6 +117,7 @@ export class MocapController {
         next.reset().play();
       }
       this.activeName = name;
+      this.playing = true;
       this.setControls(name);
     }).catch(error => {
       if (selectionId === this.selectionId) {
@@ -124,8 +127,44 @@ export class MocapController {
     });
   }
 
+  get activeAction() {
+    return this.activeName === STATIC_NAME ? null : this.actions[this.activeName];
+  }
+
+  get playback() {
+    const action = this.activeAction;
+    return {
+      name: this.activeName,
+      label: this.motions.get(this.activeName)?.label ?? 'Select an animation',
+      duration: action?.getClip().duration ?? 0,
+      time: action?.time ?? 0,
+      playing: Boolean(action && this.playing),
+    };
+  }
+
+  togglePlayback() {
+    if (this.activeAction) this.playing = !this.playing;
+  }
+
+  seek(time) {
+    const action = this.activeAction;
+    if (!action || !Number.isFinite(time)) return;
+    const duration = action.getClip().duration;
+    // Scrubbing resolves any crossfade and samples only the selected clip.
+    // Sample the exact endpoint once; repeat playback resumes on the next tick.
+    this.mixer.stopAllAction();
+    action.reset().setLoop(THREE.LoopOnce, 1).play();
+    action.clampWhenFinished = true;
+    action.time = THREE.MathUtils.clamp(time, 0, duration);
+    this.mixer.update(0);
+    action.setLoop(THREE.LoopRepeat, Infinity);
+    action.clampWhenFinished = false;
+    action.paused = false;
+    this.model.root.updateMatrixWorld(true);
+  }
+
   update(delta) {
-    if (this.activeName !== STATIC_NAME) this.mixer.update(delta);
+    if (this.activeAction && this.playing) this.mixer.update(delta);
   }
 
   dispose() {

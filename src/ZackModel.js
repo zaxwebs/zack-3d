@@ -6,6 +6,9 @@ import { repairShoeLaceGaps } from './repairShoeLaceGaps.js';
 import { repairClothingSeams } from './repairClothingSeams.js';
 import { softenShoulderWeights } from './softenShoulderWeights.js';
 import { softenJointWeights } from './softenJointWeights.js';
+import { createArmTwist } from './armTwist.js';
+import { refineElbowWeights } from './refineElbowWeights.js';
+import { createElbowBlend } from './elbowBlend.js';
 
 /** Build a native, editable Three.js model without GLTFLoader or a GLB. */
 export function createZackModel(manifest, buffer, texture = null) {
@@ -73,12 +76,13 @@ export function createZackModel(manifest, buffer, texture = null) {
   // Keep the outward correction, and bring each hinge closer to the sleeve axis.
   const shoulderCorrections = {};
   const armHelperCorrections = {};
+  const forearmHelperCorrections = {};
   for (const side of ['L', 'R']) {
     const upper = bones[`${side}_Upperarm`];
     const offset = new THREE.Vector3(side === 'L' ? 0.03 : -0.03, -0.015, 0.004)
       .applyQuaternion(root.getWorldQuaternion(new THREE.Quaternion()));
     shoulderCorrections[side] = moveBindPivot(upper, upper.getWorldPosition(new THREE.Vector3()).add(offset));
-    // The outward hinge edit previously left the unweighted helper branch
+    // The outward hinge edit previously left the helper branch
     // off the new arm axis. Keep its midpoint and endpoint on that axis.
     const shoulder = upper.getWorldPosition(new THREE.Vector3());
     const elbow = bones[`${side}_Forearm`].getWorldPosition(new THREE.Vector3());
@@ -86,9 +90,16 @@ export function createZackModel(manifest, buffer, texture = null) {
       midpoint: moveBindPivot(bones[`${side}_UpperarmTwist01`], shoulder.clone().lerp(elbow, 0.5)),
       endpoint: moveBindPivot(bones[`${side}_UpperarmTwist02`], elbow),
     };
+    const wrist = bones[`${side}_Hand`].getWorldPosition(new THREE.Vector3());
+    forearmHelperCorrections[side] = {
+      midpoint: moveBindPivot(bones[`${side}_ForearmTwist01`], elbow.clone().lerp(wrist, 0.5)),
+      endpoint: moveBindPivot(bones[`${side}_ForearmTwist02`], wrist),
+    };
   }
   root.userData.shoulderCorrections = shoulderCorrections;
   root.userData.armHelperCorrections = armHelperCorrections;
+  root.userData.forearmHelperCorrections = forearmHelperCorrections;
+  const elbowBlend = createElbowBlend({ root, mesh, skeleton, bones, geometry });
   root.userData.handSeamCorrection = repairHandSeams(geometry, skeleton, bones);
   root.userData.nonManifoldSliverCorrection = repairNonManifoldSliver(geometry);
   root.userData.shoeSoleCorrection = repairShoeSoleHoles(geometry);
@@ -178,6 +189,10 @@ export function createZackModel(manifest, buffer, texture = null) {
   root.userData.hoodieWeightCorrection = { correctedVertices: hoodieVertices, hemFadeStart: 0.405, torsoStart: 0.45 };
   root.userData.shoulderWeightTransition = softenShoulderWeights({ root, mesh, skeleton, bones, geometry });
   root.userData.jointWeightTransitions = softenJointWeights({ root, mesh, skeleton, bones, geometry });
+  root.userData.elbowWeightCorrection = refineElbowWeights({ root, mesh, skeleton, bones, geometry });
+  const armTwist = createArmTwist({ root, mesh, skeleton, bones, geometry, elbowBlend });
+  root.userData.armTwistWeights = armTwist.report;
+  root.userData.elbowBlendWeights = elbowBlend.applyRoundWeights();
   joints.needsUpdate = weights.needsUpdate = true;
   for (let vertex = 0; vertex < joints.count; vertex++) {
     let slot = 0;
@@ -205,7 +220,7 @@ export function createZackModel(manifest, buffer, texture = null) {
     geometry.attributes.normal.needsUpdate = true;
     refreshGeometry(false);
   }
-  return { root, mesh, geometry, material, skeleton, bones, regions, refreshGeometry, reset,
+  return { root, mesh, geometry, material, skeleton, bones, regions, refreshGeometry, reset, armTwist,
     setTexture(nextTexture) {
       if (nextTexture === activeTexture) return activeTexture;
       const previousTexture = activeTexture;

@@ -9,6 +9,7 @@
     :root{color-scheme:dark;font-family:Inter,"Segoe UI",system-ui,sans-serif;font-size:12px;color:#e6e6e6;background:#202020;--panel:#292929;--line:#414141;--accent:#e88b36}
     *{box-sizing:border-box}html,body{width:100%;height:100%;margin:0;overflow:hidden}body{background:#202020}button,input,select{font:inherit}button,select{color:inherit}button{cursor:pointer}
     .workspace{display:grid;grid-template-columns:minmax(0,1fr) 310px;width:100%;height:100%}
+    .viewer{display:grid;grid-template-rows:minmax(0,1fr) auto;min-width:0;min-height:0}
     #viewport{position:relative;min-width:0;min-height:0;overflow:hidden;background:#383838}#viewport canvas{display:block;width:100%;height:100%}
     .viewport-top{position:absolute;z-index:1;display:flex;align-items:center;gap:9px;color:#dedede;background:#202020d9;border:1px solid #484848;border-radius:3px;font-size:11px}
     .viewport-top{top:12px;left:12px;height:29px;padding:0 10px}.object-dot{width:7px;height:7px;border-radius:2px;background:var(--accent)}
@@ -33,14 +34,54 @@
     @media(max-width:580px){.workspace{grid-template-columns:1fr;grid-template-rows:minmax(210px,54vh) minmax(0,1fr)}.properties{border-left:0;border-top:1px solid #171717}.panel-title{height:34px;flex-basis:34px}.panel-scroll{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));align-content:start}.section{border-right:1px solid #1b1b1b}.viewport-top{top:8px;left:8px}}
     #poseDescription{margin:9px 0 0;color:#b8b8b8;font-size:11px;line-height:1.5;min-height:33px}
     #animationDescription{margin:9px 0 0;color:#b8b8b8;font-size:11px;line-height:1.5;min-height:30px}
+    .timeline{min-width:0;background:#242424;border-top:1px solid #111}
+    .timeline-toolbar{display:flex;align-items:center;gap:10px;min-height:42px;padding:6px 12px;border-bottom:1px solid #393939}
+    .timeline-toolbar button{height:27px;padding:3px 10px;color:#eee;background:#3a3a3a;border:1px solid #505050;border-radius:3px}
+    .timeline-toolbar button:hover:enabled{background:#484848}.timeline-toolbar button:disabled{opacity:.4;cursor:default}
+    #timelinePlay{min-width:69px}#timelineName{min-width:0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#ccc}
+    #timelineTime{white-space:nowrap;font-variant-numeric:tabular-nums;font-size:11px;color:#bcbcbc}
+    .timeline-zoom{display:flex;align-items:center;gap:4px}.timeline-zoom button{width:27px;padding:0;font-size:16px}
+    .timeline-scroll{height:92px;overflow-x:auto;overflow-y:hidden;overscroll-behavior:contain;scrollbar-color:#656565 #202020}
+    .timeline-content{position:relative;height:76px;min-width:100%;--tick-step:24px}
+    .timeline-ruler{position:absolute;inset:0 0 auto;height:29px;border-bottom:1px solid #414141;background:repeating-linear-gradient(to right,#525252 0 1px,transparent 1px var(--tick-step)) left bottom/100% 7px no-repeat;pointer-events:none}
+    .timeline-tick{position:absolute;top:5px;padding-left:4px;color:#aaa;font-size:10px;font-variant-numeric:tabular-nums;white-space:nowrap}
+    .timeline-tick:last-child{transform:translateX(-100%);padding:0 4px 0 0}
+    .timeline-clip{position:absolute;top:37px;left:1px;right:1px;height:29px;line-height:27px;padding:0 10px;overflow:hidden;white-space:nowrap;background:#4b3828;border:1px solid #78502d;border-radius:3px;color:#dab48e;pointer-events:none}
+    .timeline[data-ready="false"] .timeline-clip{background:#2c2c2c;border-color:#414141;color:#888}
+    #timelineScrubber{position:absolute;inset:0;width:100%;height:76px;margin:0;appearance:none;-webkit-appearance:none;background:transparent;cursor:ew-resize}
+    #timelineScrubber::-webkit-slider-runnable-track{height:76px;background:transparent}
+    #timelineScrubber::-webkit-slider-thumb{appearance:none;-webkit-appearance:none;width:3px;height:76px;background:var(--accent);border:0;border-radius:0;box-shadow:0 0 0 1px #19191966}
+    #timelineScrubber::-moz-range-track{height:76px;background:transparent}#timelineScrubber::-moz-range-thumb{width:3px;height:76px;background:var(--accent);border:0;border-radius:0}
+    #timelineScrubber:disabled{opacity:0;cursor:default}#timelineScrubber:focus-visible{outline-offset:-2px}
+    @media(max-width:580px){.timeline-toolbar{gap:6px;padding:6px 8px}#timelineName{font-size:11px}#timelineTime{font-size:10px}.timeline-zoom{gap:2px}}
   </style>
 </head>
 <body>
   <div class="workspace">
+    <div class="viewer">
     <main id="viewport" aria-label="3D viewport">
       <div class="viewport-top"><span class="object-dot" aria-hidden="true"></span><span>Zack</span></div>
       <div id="error" role="status" aria-live="polite"></div>
     </main>
+    <section id="timeline" class="timeline" data-ready="false" aria-label="Animation timeline">
+      <div class="timeline-toolbar">
+        <button id="timelinePlay" type="button" aria-label="Play animation" title="Play / pause (Space)" disabled>▶ Play</button>
+        <span id="timelineName">Select an animation</span>
+        <output id="timelineTime" aria-label="Playback time">0.00 / 0.00 s</output>
+        <div class="timeline-zoom" role="group" aria-label="Timeline zoom">
+          <button id="timelineZoomOut" type="button" aria-label="Zoom out timeline" disabled>−</button>
+          <button id="timelineZoomIn" type="button" aria-label="Zoom in timeline" disabled>+</button>
+        </div>
+      </div>
+      <div id="timelineScroll" class="timeline-scroll" role="region" aria-label="Scrollable animation timeline" tabindex="0">
+        <div id="timelineContent" class="timeline-content">
+          <div id="timelineRuler" class="timeline-ruler" aria-hidden="true"></div>
+          <div id="timelineClip" class="timeline-clip" aria-hidden="true">Choose a mocap preset to scrub its motion</div>
+          <input id="timelineScrubber" type="range" min="0" max="0" step="any" value="0" aria-label="Animation time" disabled>
+        </div>
+      </div>
+    </section>
+    </div>
     <aside class="properties" aria-label="Model properties">
       <div class="panel-title">Properties</div>
       <div class="panel-scroll">

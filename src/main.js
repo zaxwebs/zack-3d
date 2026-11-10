@@ -4,6 +4,7 @@ import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { loadZackModel } from './ZackModel.js';
 import { createZackRig, POSES } from './ZackRig.js';
 import { MocapController } from './MocapController.js';
+import { AnimationTimeline } from './AnimationTimeline.js';
 import { MOCAP_CONFIG } from './mocapConfig.js';
 
 const viewport = document.querySelector('#viewport');
@@ -57,6 +58,7 @@ let rig;
 let helper;
 let selectedPose = 'down';
 let mocapController;
+let timeline;
 let cameraTarget = new THREE.Vector3();
 const mocapFollowOffset = new THREE.Vector3();
 const mocapFollowTarget = new THREE.Vector3();
@@ -180,6 +182,7 @@ try {
       resetMocapFollow();
     },
   });
+  timeline = new AnimationTimeline(mocapController);
   selectPose('down');
 
   output('#surface').addEventListener('change', event => {
@@ -225,6 +228,7 @@ const animationClock = new THREE.Clock();
 renderer.setAnimationLoop(() => {
   const delta = Math.min(animationClock.getDelta(), 0.05);
   mocapController?.update(delta);
+  timeline?.update();
   followMocap();
   controls.update();
   key.target.position.copy(controls.target);

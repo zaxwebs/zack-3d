@@ -37,7 +37,7 @@ for (let i = 0; i < geometry.attributes.skinIndex.array.length; i++) {
   weightTotals[geometry.attributes.skinIndex.array[i]] += geometry.attributes.skinWeight.array[i];
 }
 let maxBindMatrixError = 0;
-for (let i = 0; i < skeleton.bones.length; i++) {
+for (let i = 0; i < manifest.joints.length; i++) {
   const original = sourceWorld(skeleton.bones[i]).clone()
     .multiply(new THREE.Matrix4().fromArray(originalInverses, i * 16));
   const corrected = skeleton.bones[i].matrixWorld.clone().multiply(skeleton.boneInverses[i]);

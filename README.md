@@ -25,11 +25,19 @@ rig.setPose('down'); // Also: front, hi, rest, elbows, twist, lean, bow, knee.
 
 Pose screenshots and self-contained Three.js scenes are in `artifacts/poses/`. Pose selection is immediate. The Mocap animation section loads the imported preset collection from `public/animations/preset-mocap.glb`, then retargets each clip onto Zack's skeleton the first time it is selected and crossfades between cached actions. **Static** returns to the selected pose.
 
+The timeline below the viewport provides **Play/Pause**, current time and duration, and a draggable playhead. Scroll over the ruler to move horizontally and use **− / +** to zoom. Scrubbing updates the pose immediately and preserves the playback state; Home/End jump to the endpoints while the scrubber is focused. Space toggles playback outside form controls. Selecting a new clip starts playback; selecting Static disables the timeline. Run `node scripts/verify-timeline.mjs` with the dev server running for desktop/mobile playback and scrubbing checks.
+
 The viewer provides **Arms down**, **Arms forward**, **Right-hand wave**, **T-pose**, **Bend elbows**, **Torso twist**, **Side bend**, **Bend forward**, and **Right knee lift**. Each preset describes the joints it exercises below the buttons. Enable **Skeleton** and orbit or zoom to inspect the bends. These are static deformation checks, not balanced animation poses: the raised leg is not ground-constrained. Switching presets restores all bone transforms before applying the next pose, and preserves the head-turn slider. The exported `POSES` registry in `src/ZackRig.js` defines the available names, labels, and descriptions. `src/MocapController.js` owns lazy clip retargeting, action caching, and transitions; `loadMocapAnimations()` in `src/MocapAnimations.js` remains the eager-loading helper for another Three.js scene. Source-specific retarget settings live in `src/mocapConfig.js`. Run `node scripts/verify-poses.mjs` for standalone preset checks.
 
 The model factory moves the source shoulder pivots outward by 0.03 scene units per side, down by 0.015, and forward by 0.004 to better center them within the sleeve caps. It compensates child bone positions and inverse bind matrices so the rest mesh and elbow positions stay unchanged. Upper-arm twist-helper midpoints and endpoints are aligned with the corrected shoulder-to-elbow axis. `root.userData.shoulderCorrections` and `root.userData.armHelperCorrections` record the changes. Reset uses the corrected rig. Run `npm run audit:shoulders` for the structural and bind-matrix checks; see `SHOULDER_AUDIT.md` for findings and limitations.
 
 Static poses use the fitted clavicle directions as their base. Arms down and the relaxed sides of other presets add a gentle downward shoulder slope, closer to the imported Idle animation; reaching and waving add lift explicitly. This prevents the old almost-horizontal collarbone target from shrugging the shoulders after the skeleton adjustment.
+
+Raised-arm rotation (especially **Angry 01**) now uses the eight existing upper-arm and forearm twist helpers, which previously had no skin weights. `src/armTwist.js` distributes the sleeve weights along three rotation frames per segment. The upper sleeve follows the arm swing while axial roll increases toward the elbow; forearm roll increases toward the wrist. Forearm helper pivots are aligned with the elbow-to-wrist axis with inverse-bind compensation. Main joint transforms, motion timing, and the rest surface are retained. Weights use at most four normalized influences, including matching weights across UV seams. `root.userData.armTwistWeights` records the affected vertices.
+
+Static presets update the helpers through `rig.setPose()`. Mocap clips bake helper quaternion tracks after retargeting, so playback, crossfades, and exported clips use ordinary Three.js animation tracks. For manual bone edits, call `zack.armTwist.update()` afterward. Run `npm run test:arms` with the dev server running to check 120-degree twist cases, all 43 mocap clips against the original main-joint tracks, transitions, and a posed JSON round trip. Before/after Angry 01 captures are in `artifacts/arm-audit/`.
+
+Elbows separate hinge flex from forearm roll. The added `ElbowBlend` frames carry swing only at the hinge; the forearm twist frames progressively add elbow and wrist roll at 50% and 100% toward the wrist. This avoids putting the full forearm roll directly into the elbow seam. `src/refineElbowWeights.js` paints a 0.05-unit outer bend transition and a tighter 0.04-unit inner transition, keeping the sleeve sections straighter and allowing the inside to compress and overlap. Two `ElbowRound` frames share the bend only on the outer sleeve to round its silhouette. All helper motion is baked into ordinary quaternion tracks. `root.userData.elbowWeightCorrection` and `root.userData.elbowBlendWeights` record the adjustments. Positions, normals, UVs, vertex count, and triangle indices remain exactly unchanged by the elbow work. Run `node scripts/inspect-elbows.mjs` to capture **Frustrated 02** around 5 seconds in `artifacts/frustrated-elbow/after/`.
 
 Chest vertices are anchored to the spine by removing leaked arm/clavicle weights in the torso center and smoothly restoring those influences toward the sleeve caps (0.085–0.145 units from the centerline). At shoulder height, the outer boundary narrows to 0.125 units, blending over heights 0.54–0.59. This releases the upper sleeve to reduce bunching when the arm is raised while retaining the lower torso correction. Weights remain normalized with at most four influences per vertex. `root.userData.chestWeightCorrection` records the correction. The pose tests measure central chest displacement against the rest pose to catch torso shrinkage.
 
@@ -41,7 +49,7 @@ The rig audit also removes thigh influence from the hoodie above the hem, with a
 
 ## Use in another Three.js project
 
-Copy `src/ZackModel.js`, `src/ZackRig.js`, `src/repairHandSeams.js`, and `public/model/` into your project. Install `three`, then:
+Copy `src/` and `public/model/` into your project. Install `three`, then:
 
 ```js
 import { loadZackModel } from './ZackModel.js';
@@ -79,7 +87,7 @@ The lossless WebP texture repairs the drawstring roots using mesh geometry and r
 The source mesh has a narrow open slit at the base of each thumb. `repairHandSeams()` detects only four-edge hand openings with a sub-0.001-unit diagonal and stitches their near-coincident corners. It adjusts eight existing vertex records by at most 0.000245 model units, sharing position, normal, and normalized skin weights across the joined corners while preserving UV coordinates, vertex count, and triangle indices. A separate load-time repair removes one isolated sliver triangle near the head that made a welded edge non-manifold; the runtime mesh has 10,711 triangles. Larger openings, clothing boundaries, and the source files are left unchanged. `root.userData.handSeamCorrection` and `root.userData.nonManifoldSliverCorrection` record the repairs. Reset retains them, and `node scripts/verify-hand-seams.mjs` checks hand closure in every preset.
 
 - 1 skinned mesh, 22,862 vertices, 10,712 source triangles (10,711 at runtime after repair)
-- 78 named bones, four skin influences per vertex
+- 78 source bones, plus four runtime elbow helpers; four skin influences per vertex
 - 4096 × 4096 base-color texture
 - No embedded Zack animation clips or degenerate triangles
 - Original source scale retained; world dimensions approximately 0.862 × 1.000 × 0.391 units

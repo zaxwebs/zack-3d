@@ -159,6 +159,7 @@ export function createZackRig(model) {
       rotateCharacter('R_Calf', [1, 0, 0], 60);
     }
     setHeadTurn(headTurn);
+    model.armTwist.update();
     root.updateMatrixWorld(true);
     mesh.computeBoundingBox(); mesh.computeBoundingSphere();
     currentPose = name;

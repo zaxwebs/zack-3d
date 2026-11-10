@@ -5,6 +5,7 @@
   "main": "index.js",
   "scripts": {
     "test": "node scripts/verify.mjs",
+    "test:arms": "node scripts/verify-arm-twist.mjs && node scripts/verify-arm-mocap.mjs",
     "audit:shoulders": "node scripts/audit-shoulders.mjs",
     "audit:joints": "node scripts/audit-joints.mjs",
     "dev": "vite --host 127.0.0.1",

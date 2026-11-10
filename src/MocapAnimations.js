@@ -77,7 +77,7 @@ export async function loadMocapSource(model, url = MOCAP_CONFIG.sourceUrl, confi
 /** Retargets one source clip. The caller can cache the result for later plays. */
 export function retargetMocapClip(sourceState, sourceClip) {
   const { model, source, config, scale, restHipPosition } = sourceState;
-  const clip = threeRetargetClip(model.mesh, source, sourceClip, {
+  let clip = threeRetargetClip(model.mesh, source, sourceClip, {
     names: config.targetToSource,
     hip: config.hip,
     scale,
@@ -99,6 +99,8 @@ export function retargetMocapClip(sourceState, sourceClip) {
   // retargetClip uses the target skeleton as a working pose. Restore Zack's
   // actual rest transforms before the clip is handed to the mixer; otherwise
   // an untracked parent bone can retain the source rig's orientation.
+  model.reset();
+  clip = model.armTwist.bakeClip(clip);
   model.reset();
   return clip;
 }
