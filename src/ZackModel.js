@@ -4,6 +4,8 @@ import { repairNonManifoldSliver } from './repairNonManifoldSliver.js';
 import { repairShoeSoleHoles } from './repairShoeSoleHoles.js';
 import { repairShoeLaceGaps } from './repairShoeLaceGaps.js';
 import { repairClothingSeams } from './repairClothingSeams.js';
+import { softenShoulderWeights } from './softenShoulderWeights.js';
+import { softenJointWeights } from './softenJointWeights.js';
 
 /** Build a native, editable Three.js model without GLTFLoader or a GLB. */
 export function createZackModel(manifest, buffer, texture = null) {
@@ -54,26 +56,39 @@ export function createZackModel(manifest, buffer, texture = null) {
   mesh.bind(skeleton, new THREE.Matrix4());
   root.updateMatrixWorld(true);
   const bones = Object.fromEntries(skeleton.bones.map(bone => [bone.name, bone]));
-  // The automatic source rig puts the shoulder hinges inside the chest.
-  // Move each hinge toward the sleeve cap, keeping the elbow, twist bones,
-  // and rest surface fixed. Update its inverse bind matrix for the new pivot.
-  const shoulderCorrections = {};
-  for (const side of ['L', 'R']) {
-    const bone = bones[`${side}_Upperarm`];
+  // Reposition a bind-pose pivot without moving its children or rest surface.
+  function moveBindPivot(bone, target) {
     const oldWorld = bone.matrixWorld.clone();
     const original = bone.getWorldPosition(new THREE.Vector3());
     const childPositions = bone.children.map(child => child.getWorldPosition(new THREE.Vector3()));
-    const offset = new THREE.Vector3(side === 'L' ? 0.03 : -0.03, 0, 0)
-      .applyQuaternion(root.getWorldQuaternion(new THREE.Quaternion()));
-    bone.position.copy(bone.parent.worldToLocal(original.clone().add(offset)));
+    bone.position.copy(bone.parent.worldToLocal(target.clone()));
     root.updateMatrixWorld(true);
     bone.children.forEach((child, i) => child.position.copy(bone.worldToLocal(childPositions[i].clone())));
     root.updateMatrixWorld(true);
     const index = skeleton.bones.indexOf(bone);
     skeleton.boneInverses[index].premultiply(oldWorld).premultiply(bone.matrixWorld.clone().invert());
-    shoulderCorrections[side] = { original: original.toArray(), corrected: bone.getWorldPosition(new THREE.Vector3()).toArray() };
+    return { original: original.toArray(), corrected: bone.getWorldPosition(new THREE.Vector3()).toArray() };
+  }
+  // The source hinges are medial to the sleeve caps and high inside them.
+  // Keep the outward correction, and bring each hinge closer to the sleeve axis.
+  const shoulderCorrections = {};
+  const armHelperCorrections = {};
+  for (const side of ['L', 'R']) {
+    const upper = bones[`${side}_Upperarm`];
+    const offset = new THREE.Vector3(side === 'L' ? 0.03 : -0.03, -0.015, 0.004)
+      .applyQuaternion(root.getWorldQuaternion(new THREE.Quaternion()));
+    shoulderCorrections[side] = moveBindPivot(upper, upper.getWorldPosition(new THREE.Vector3()).add(offset));
+    // The outward hinge edit previously left the unweighted helper branch
+    // off the new arm axis. Keep its midpoint and endpoint on that axis.
+    const shoulder = upper.getWorldPosition(new THREE.Vector3());
+    const elbow = bones[`${side}_Forearm`].getWorldPosition(new THREE.Vector3());
+    armHelperCorrections[side] = {
+      midpoint: moveBindPivot(bones[`${side}_UpperarmTwist01`], shoulder.clone().lerp(elbow, 0.5)),
+      endpoint: moveBindPivot(bones[`${side}_UpperarmTwist02`], elbow),
+    };
   }
   root.userData.shoulderCorrections = shoulderCorrections;
+  root.userData.armHelperCorrections = armHelperCorrections;
   root.userData.handSeamCorrection = repairHandSeams(geometry, skeleton, bones);
   root.userData.nonManifoldSliverCorrection = repairNonManifoldSliver(geometry);
   root.userData.shoeSoleCorrection = repairShoeSoleHoles(geometry);
@@ -87,6 +102,8 @@ export function createZackModel(manifest, buffer, texture = null) {
   const weights = geometry.attributes.skinWeight;
   // Source auto-weights leak clavicle/arm influence across the chest. Keep
   // the torso on the spine, fading arm influence back in over the sleeve cap.
+  // Finish the fade before the upper sleeve: anchoring it out to 0.145
+  // holds back the sleeve cap and bunches the biceps when the arm is raised.
   const armJoints = new Set();
   for (const side of ['L', 'R']) bones[`${side}_Clavicle`].traverse(bone => {
     const index = skeleton.bones.indexOf(bone);
@@ -99,7 +116,8 @@ export function createZackModel(manifest, buffer, texture = null) {
     mesh.getVertexPosition(vertex, point).applyMatrix4(mesh.matrixWorld);
     root.worldToLocal(point);
     if (point.y < 0.35 || point.y > 0.70) continue;
-    const keepArm = THREE.MathUtils.smoothstep(Math.abs(point.x - chestCenter), 0.085, 0.145);
+    const outerBoundary = THREE.MathUtils.lerp(0.145, 0.125, THREE.MathUtils.smoothstep(point.y, 0.54, 0.59));
+    const keepArm = THREE.MathUtils.smoothstep(Math.abs(point.x - chestCenter), 0.085, outerBoundary);
     if (keepArm === 1) continue;
     const influences = new Map();
     let removed = 0;
@@ -121,7 +139,8 @@ export function createZackModel(manifest, buffer, texture = null) {
     }
     correctedVertices++;
   }
-  root.userData.chestWeightCorrection = { correctedVertices, innerBoundary: 0.085, outerBoundary: 0.145 };
+  root.userData.chestWeightCorrection = { correctedVertices, innerBoundary: 0.085, outerBoundary: 0.145,
+    shoulderOuterBoundary: 0.125, shoulderFadeStart: 0.54, shoulderFadeEnd: 0.59 };
   // The source auto-rig also assigns the hoodie pocket and abdomen to the
   // thighs. Restrict that influence to the pants/hem transition.
   const legJoints = new Set();
@@ -157,6 +176,8 @@ export function createZackModel(manifest, buffer, texture = null) {
     hoodieVertices++;
   }
   root.userData.hoodieWeightCorrection = { correctedVertices: hoodieVertices, hemFadeStart: 0.405, torsoStart: 0.45 };
+  root.userData.shoulderWeightTransition = softenShoulderWeights({ root, mesh, skeleton, bones, geometry });
+  root.userData.jointWeightTransitions = softenJointWeights({ root, mesh, skeleton, bones, geometry });
   joints.needsUpdate = weights.needsUpdate = true;
   for (let vertex = 0; vertex < joints.count; vertex++) {
     let slot = 0;

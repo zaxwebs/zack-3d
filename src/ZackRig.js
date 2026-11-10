@@ -21,6 +21,12 @@ export function createZackRig(model) {
     upper: bones[`${side}_Upperarm`].getWorldQuaternion(new THREE.Quaternion()).normalize(),
     fore: bones[`${side}_Forearm`].getWorldQuaternion(new THREE.Quaternion()).normalize(),
   }]));
+  const rootInverse = root.matrixWorld.clone().invert();
+  const clavicleRestDirection = Object.fromEntries(['L', 'R'].map(side => [side,
+    bones[`${side}_Upperarm`].getWorldPosition(new THREE.Vector3())
+      .sub(bones[`${side}_Clavicle`].getWorldPosition(new THREE.Vector3()))
+      .transformDirection(rootInverse),
+  ]));
   let headTurn = 0;
   const gentleLimits = Object.freeze({ headYaw: 30, elbowFlex: 60, shoulderElevation: 115 });
   const limits = () => gentleLimits;
@@ -109,10 +115,13 @@ export function createZackRig(model) {
         const sign = side === 'L' ? 1 : -1;
         // The collarbone participates in reaching; avoid folding the entire
         // shoulder through a single upper-arm rotation.
-        const clavicleDirection = name === 'front'
-          ? [sign, 0.04, 0.15]
-          : name === 'hi' && side === 'R' ? [sign, 0.10, 0.04] : [sign, -0.025, 0];
-        aim(`${side}_Clavicle`, `${side}_Upperarm`, clavicleDirection);
+        // Use the fitted bind direction as the base. The previous almost-
+        // horizontal target shrugged the shoulders even in Arms down.
+        const clavicleDirection = clavicleRestDirection[side].clone();
+        if (name === 'front') clavicleDirection.add(new THREE.Vector3(0, 0.04, 0.15));
+        else if (name === 'hi' && side === 'R') clavicleDirection.add(new THREE.Vector3(0, 0.10, 0.04));
+        else clavicleDirection.y -= 0.20;
+        aim(`${side}_Clavicle`, `${side}_Upperarm`, clavicleDirection.toArray());
         // Keep a little space between the sleeves and the torso.
         let upper = [sign * 0.26, -0.96, 0.05];
         let fore = [sign * 0.14, -0.98, 0.12];

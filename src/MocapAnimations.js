@@ -35,10 +35,11 @@ function disposeSource(root) {
 }
 
 function createMotion(sourceClip, config) {
+  const label = config.labelOverrides?.[sourceClip.name] ?? humanizeAnimationName(sourceClip.name);
   return {
     name: sourceClip.name,
-    label: humanizeAnimationName(sourceClip.name),
-    description: `Preset animation exported from ${config.sourceLabel}: ${humanizeAnimationName(sourceClip.name)}.`,
+    label,
+    description: `Preset animation exported from ${config.sourceLabel}: ${label}.`,
     sourceClip,
     clip: null,
   };

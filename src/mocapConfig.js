@@ -76,6 +76,9 @@ export const MOCAP_CONFIG = Object.freeze({
   hip: 'pelvis',
   fadeDuration: 0.25,
   targetToSource: TARGET_TO_SOURCE,
+  labelOverrides: Object.freeze({
+    'scratch.001': 'Stretch',
+  }),
   excludedClips: Object.freeze([
     'slash.001',
     'defeat_02.001',
@@ -84,5 +87,10 @@ export const MOCAP_CONFIG = Object.freeze({
     'cheer.001',
     'greet_02.001',
     'freaky.001',
+    'laugh_02.001',
+    'cry.001',
+    'turn.001',
+    'cast_a_spell.001',
+    'sing_04.001',
   ]),
 });

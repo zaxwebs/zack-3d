@@ -25,11 +25,31 @@ for (const rootAngle of [0, 0.7]) {
   rig.setHeadTurn(20);
   rig.setPose('down');
   const baseline = transforms();
+  const shoulderSlope = side => {
+    const upper = model.bones[`${side}_Upperarm`].getWorldPosition(new THREE.Vector3());
+    const clavicle = model.bones[`${side}_Clavicle`].getWorldPosition(new THREE.Vector3());
+    const direction = upper.sub(clavicle).transformDirection(model.root.matrixWorld.clone().invert());
+    return direction.y;
+  };
+  const relaxedSlopes = Object.fromEntries(['L', 'R'].map(side => [side, shoulderSlope(side)]));
   for (const name of Object.keys(POSES)) {
     rig.setPose(name);
     assert.equal(rig.currentPose, name);
     assert.equal(rig.headTurn, 20);
     const first = transforms();
+    if (['down', 'elbows', 'knee'].includes(name)) {
+      for (const side of ['L', 'R']) {
+        const slope = shoulderSlope(side);
+        assert(slope < -0.2 && slope > -0.55, `${name}: ${side} shoulder should have a relaxed downward slope`);
+      }
+    }
+    if (name === 'front') for (const side of ['L', 'R']) {
+      assert(shoulderSlope(side) > relaxedSlopes[side] + 0.1, 'Reaching should lift the shoulder from its relaxed position');
+    }
+    if (name === 'hi') {
+      assert(shoulderSlope('R') > relaxedSlopes.R + 0.1, 'The waving shoulder should lift');
+      assert(Math.abs(shoulderSlope('L') - relaxedSlopes.L) < 1e-6, 'The non-waving shoulder should stay relaxed');
+    }
     for (const boneName of expectedJoints[name] ?? []) {
       const index = model.skeleton.bones.indexOf(model.bones[boneName]);
       assert(first[index].quaternion.angleTo(baseline[index].quaternion) > 0.01, `${name} must move ${boneName}`);
