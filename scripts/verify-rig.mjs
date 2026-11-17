@@ -94,6 +94,16 @@ report.exportError = exportError;
 report.boneCount = model.skeleton.bones.length;
 report.bonesWithoutDirectWeights = model.skeleton.bones.filter((bone, i) => boneUsage[i] < 1e-8).map(bone => bone.name);
 report.hoodieCorrection = model.root.userData.hoodieWeightCorrection;
+model.reset();
+const pocketSection = [];
+for (let i = 0; i < points.count; i++) {
+  const point = worldVertex(i);
+  if (point.y >= 0.443 && point.y <= 0.476 && Math.abs(point.x) < 0.13) {
+    pocketSection.push(point.x);
+  }
+}
+report.pocketWidth = Math.max(...pocketSection) - Math.min(...pocketSection);
+assert(report.pocketWidth > 0.19 && report.pocketWidth < 0.21, 'Reset must retain the narrower hoodie pocket silhouette');
 await mkdir('artifacts/rig-audit', { recursive: true });
 await writeFile('artifacts/rig-audit/checks.json', JSON.stringify(report, null, 2));
 model.dispose();
