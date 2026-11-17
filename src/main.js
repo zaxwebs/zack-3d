@@ -193,6 +193,13 @@ try {
   });
   output('#rig').addEventListener('change', event => { helper.visible = event.target.checked; });
   output('#ground').addEventListener('change', event => { grid.visible = event.target.checked; });
+  output('#elbowCorrectives').addEventListener('change', event => {
+    model.elbowCorrectives.setEnabled(event.target.checked); model.armSoftening.update();
+  });
+  output('#shoulderCorrectives').addEventListener('change', event => {
+    model.shoulderCorrectives.setEnabled(event.target.checked); model.armSoftening.update();
+  });
+  output('#armSoftening').addEventListener('change', event => model.armSoftening.setEnabled(event.target.checked));
   output('#head').addEventListener('input', () => {
     if (mocapController.activeName !== 'static') {
       mocapController.select('static');

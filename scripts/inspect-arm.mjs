@@ -23,7 +23,7 @@ try {
   }));
   for (const time of [0, 0.5, 1, 1.5, 2, 2.5, 3]) {
     await page.evaluate(time => {
-      studio.mocapController.mixer.setTime(time);
+      studio.mocapController.seek(time);
       zack.root.updateMatrixWorld(true);
       studio.controls.target.set(0, 0.7, 0);
       studio.camera.position.set(0, 0.73, 1.25);

@@ -16,13 +16,15 @@ try {
   const report = await page.evaluate(async () => {
     const THREE = await import('/node_modules/three/build/three.module.js');
     const { retargetClip } = await import('/node_modules/three/examples/jsm/utils/SkeletonUtils.js');
+    const { prepareLoopingClip } = await import('/src/prepareLoopingClip.js');
     const controller = studio.mocapController, state = controller.sourceState;
     const reports = [];
     const worldVertex = (mesh, i) => mesh.getVertexPosition(i, new THREE.Vector3()).applyMatrix4(mesh.matrixWorld);
     for (const motion of controller.motions.values()) {
       // Independently run the original retargeter and compare all main tracks.
       zack.reset();
-      const raw = retargetClip(zack.mesh, state.source, motion.sourceClip, {
+      const prepared = prepareLoopingClip(state, motion.sourceClip);
+      const raw = retargetClip(zack.mesh, state.source, prepared, {
         names: state.config.targetToSource, hip: state.config.hip, scale: state.scale,
         preserveBonePositions: true, preserveBoneMatrix: false, useFirstFramePosition: true,
       });
@@ -57,7 +59,7 @@ try {
       controller.actions[motion.name].reset().play();
       let maxExportError = 0;
       for (const fraction of [0, 0.15, 0.3, 0.45, 0.6, 0.75, 0.9]) {
-        controller.mixer.setTime(clip.duration * fraction);
+        controller.seek(clip.duration * fraction);
         zack.root.updateMatrixWorld(true);
         for (let i = 0; i < zack.geometry.attributes.position.count; i++) {
           if (!worldVertex(zack.mesh, i).toArray().every(Number.isFinite)) throw new Error('Invalid skinned point');

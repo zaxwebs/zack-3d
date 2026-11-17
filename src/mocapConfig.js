@@ -75,6 +75,7 @@ export const MOCAP_CONFIG = Object.freeze({
   sourceLabel: 'Imported preset',
   hip: 'pelvis',
   fadeDuration: 0.25,
+  continuousLoops: Object.freeze(['run.001']),
   targetToSource: TARGET_TO_SOURCE,
   labelOverrides: Object.freeze({
     'scratch.001': 'Stretch',

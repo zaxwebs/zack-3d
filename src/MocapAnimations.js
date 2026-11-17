@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { retargetClip as threeRetargetClip } from 'three/addons/utils/SkeletonUtils.js';
 import { MOCAP_CONFIG } from './mocapConfig.js';
+import { prepareLoopingClip } from './prepareLoopingClip.js';
 
 function humanizeAnimationName(name) {
   return name
@@ -77,7 +78,8 @@ export async function loadMocapSource(model, url = MOCAP_CONFIG.sourceUrl, confi
 /** Retargets one source clip. The caller can cache the result for later plays. */
 export function retargetMocapClip(sourceState, sourceClip) {
   const { model, source, config, scale, restHipPosition } = sourceState;
-  let clip = threeRetargetClip(model.mesh, source, sourceClip, {
+  const prepared = prepareLoopingClip(sourceState, sourceClip);
+  let clip = threeRetargetClip(model.mesh, source, prepared, {
     names: config.targetToSource,
     hip: config.hip,
     scale,
@@ -102,6 +104,11 @@ export function retargetMocapClip(sourceState, sourceClip) {
   model.reset();
   clip = model.armTwist.bakeClip(clip);
   model.reset();
+  if (prepared !== sourceClip) {
+    const hip = clip.tracks.find(track => track.name === '.bones[Hip].position');
+    const offset = new THREE.Vector3().fromArray(hip.values, hip.values.length - 3).sub(new THREE.Vector3().fromArray(hip.values));
+    clip.userData = { continuousRootMotion: offset.toArray() };
+  }
   return clip;
 }
 

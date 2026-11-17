@@ -23,6 +23,13 @@ export class MocapController {
     this.activeName = STATIC_NAME;
     this.playing = false;
     this.selectionId = 0;
+    this.rootMotionOffset = new THREE.Vector3();
+    this.appliedRootMotionOffset = new THREE.Vector3();
+    this.mixer.addEventListener('loop', event => {
+      if (event.action !== this.activeAction) return;
+      const offset = event.action.getClip().userData?.continuousRootMotion;
+      if (offset) this.rootMotionOffset.addScaledVector(new THREE.Vector3().fromArray(offset), event.loopDelta);
+    });
 
     this.addButton({
       name: STATIC_NAME,
@@ -98,6 +105,8 @@ export class MocapController {
       this.mixer.stopAllAction();
       this.activeName = STATIC_NAME;
       this.playing = false;
+      this.rootMotionOffset.set(0, 0, 0);
+      this.appliedRootMotionOffset.set(0, 0, 0);
       if (restorePose) this.onStatic?.();
       this.setControls(STATIC_NAME);
       return Promise.resolve();
@@ -108,6 +117,8 @@ export class MocapController {
     this.setLoadingDescription(motion.label);
     return this.getAction(motion).then(next => {
       if (selectionId !== this.selectionId) return;
+      this.rootMotionOffset.set(0, 0, 0);
+      this.appliedRootMotionOffset.set(0, 0, 0);
       const previous = this.activeName === STATIC_NAME ? null : this.actions[this.activeName];
       if (previous && previous !== next) {
         next.reset().play();
@@ -153,6 +164,8 @@ export class MocapController {
     // Scrubbing resolves any crossfade and samples only the selected clip.
     // Sample the exact endpoint once; repeat playback resumes on the next tick.
     this.mixer.stopAllAction();
+    this.rootMotionOffset.set(0, 0, 0);
+    this.appliedRootMotionOffset.set(0, 0, 0);
     action.reset().setLoop(THREE.LoopOnce, 1).play();
     action.clampWhenFinished = true;
     action.time = THREE.MathUtils.clamp(time, 0, duration);
@@ -161,10 +174,25 @@ export class MocapController {
     action.clampWhenFinished = false;
     action.paused = false;
     this.model.root.updateMatrixWorld(true);
+    this.model.elbowCorrectives.update();
+    this.model.shoulderCorrectives.update();
+    this.model.armSoftening.update();
   }
 
   update(delta) {
-    if (this.activeAction && this.playing) this.mixer.update(delta);
+    if (this.activeAction && this.playing) {
+      // PropertyMixer may skip writing an unchanged sample (e.g. update(0)).
+      // Remove our previous offset first, so it is applied exactly once.
+      this.model.bones.Hip.position.sub(this.appliedRootMotionOffset);
+      this.mixer.update(delta);
+      if (this.activeAction.getClip().userData?.continuousRootMotion) {
+        this.model.bones.Hip.position.add(this.rootMotionOffset);
+        this.appliedRootMotionOffset.copy(this.rootMotionOffset);
+      }
+    }
+    if (this.activeAction) this.model.elbowCorrectives.update();
+    if (this.activeAction) this.model.shoulderCorrectives.update();
+    if (this.activeAction) this.model.armSoftening.update();
   }
 
   dispose() {

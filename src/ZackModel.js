@@ -9,6 +9,9 @@ import { softenJointWeights } from './softenJointWeights.js';
 import { createArmTwist } from './armTwist.js';
 import { refineElbowWeights } from './refineElbowWeights.js';
 import { createElbowBlend } from './elbowBlend.js';
+import { createElbowCorrectives } from './elbowCorrectives.js';
+import { createShoulderCorrectives } from './shoulderCorrectives.js';
+import { createArmSoftening } from './armSoftening.js';
 
 /** Build a native, editable Three.js model without GLTFLoader or a GLB. */
 export function createZackModel(manifest, buffer, texture = null) {
@@ -193,6 +196,12 @@ export function createZackModel(manifest, buffer, texture = null) {
   const armTwist = createArmTwist({ root, mesh, skeleton, bones, geometry, elbowBlend });
   root.userData.armTwistWeights = armTwist.report;
   root.userData.elbowBlendWeights = elbowBlend.applyRoundWeights();
+  const elbowCorrectives = createElbowCorrectives({ root, mesh, skeleton, bones, geometry, armTwist });
+  root.userData.elbowCorrectives = elbowCorrectives.report;
+  const shoulderCorrectives = createShoulderCorrectives({ root, mesh, skeleton, bones, geometry, armTwist });
+  root.userData.shoulderCorrectives = shoulderCorrectives.report;
+  const armSoftening = createArmSoftening({ root, mesh, geometry, skeleton, bones, material });
+  root.userData.armSoftening = armSoftening.report;
   joints.needsUpdate = weights.needsUpdate = true;
   for (let vertex = 0; vertex < joints.count; vertex++) {
     let slot = 0;
@@ -210,6 +219,9 @@ export function createZackModel(manifest, buffer, texture = null) {
     mesh.computeBoundingSphere();
   }
   function reset() {
+    armSoftening.reset();
+    elbowCorrectives.reset();
+    shoulderCorrectives.reset();
     skeleton.bones.forEach((bone, index) => {
       bone.position.copy(restTransforms[index].position);
       bone.quaternion.copy(restTransforms[index].quaternion);
@@ -220,7 +232,7 @@ export function createZackModel(manifest, buffer, texture = null) {
     geometry.attributes.normal.needsUpdate = true;
     refreshGeometry(false);
   }
-  return { root, mesh, geometry, material, skeleton, bones, regions, refreshGeometry, reset, armTwist,
+  return { root, mesh, geometry, material, skeleton, bones, regions, refreshGeometry, reset, armTwist, elbowCorrectives, shoulderCorrectives, armSoftening,
     setTexture(nextTexture) {
       if (nextTexture === activeTexture) return activeTexture;
       const previousTexture = activeTexture;

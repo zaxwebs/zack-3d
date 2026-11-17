@@ -6,6 +6,10 @@
   "scripts": {
     "test": "node scripts/verify.mjs",
     "test:arms": "node scripts/verify-arm-twist.mjs && node scripts/verify-arm-mocap.mjs",
+    "test:correctives": "node scripts/verify-elbow-correctives.mjs && node scripts/verify-elbow-correctives-viewer.mjs",
+    "test:shoulders": "node scripts/verify-shoulder-correctives.mjs && node scripts/verify-shoulder-correctives-viewer.mjs",
+    "test:soft-arms": "node scripts/verify-arm-softening.mjs && node scripts/verify-shovel.mjs",
+    "test:run": "node scripts/verify-run-loop.mjs",
     "audit:shoulders": "node scripts/audit-shoulders.mjs",
     "audit:joints": "node scripts/audit-joints.mjs",
     "dev": "vite --host 127.0.0.1",

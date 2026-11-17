@@ -33,10 +33,14 @@ export function refineElbowWeights({ root, mesh, skeleton, bones, geometry }) {
       const inner = THREE.MathUtils.smoothstep(radial.z, -0.035, 0.035);
       const halfWidth = THREE.MathUtils.lerp(0.05, 0.04, inner);
       const target = THREE.MathUtils.smoothstep(along, -halfWidth, halfWidth);
-      const change = (target - original) * brush * mass;
+      // Forearm influence must end before the sleeve cap. Otherwise splitting
+      // it into twist frames consumes a fifth slot and drops the torso anchor.
+      const keepForearm = THREE.MathUtils.smoothstep(along, -0.055, -0.025);
+      const childWeight = (mass * original + (target - original) * brush * mass) * keepForearm;
+      const change = childWeight - mass * original;
       if (Math.abs(change) < 1e-6) continue;
-      influences.set(child, mass * original + change);
-      influences.set(parent, mass * (1 - original) - change);
+      influences.set(child, childWeight);
+      influences.set(parent, mass - childWeight);
       const entries = [...influences].filter(([, weight]) => weight > 0).sort((a, b) => b[1] - a[1]);
       const total = entries.reduce((sum, [, weight]) => sum + weight, 0);
       for (let slot = 0; slot < 4; slot++) {
@@ -48,5 +52,5 @@ export function refineElbowWeights({ root, mesh, skeleton, bones, geometry }) {
     }
     report.push(stats);
   }
-  return { outerHalfWidth: 0.05, innerHalfWidth: 0.04, strength: 1, joints: report };
+  return { outerHalfWidth: 0.05, innerHalfWidth: 0.04, proximalForearmFade: [-0.055, -0.025], strength: 1, joints: report };
 }

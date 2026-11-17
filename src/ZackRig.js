@@ -160,6 +160,9 @@ export function createZackRig(model) {
     }
     setHeadTurn(headTurn);
     model.armTwist.update();
+    model.elbowCorrectives.update();
+    model.shoulderCorrectives.update();
+    model.armSoftening.update();
     root.updateMatrixWorld(true);
     mesh.computeBoundingBox(); mesh.computeBoundingSphere();
     currentPose = name;
