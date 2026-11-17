@@ -12,6 +12,7 @@ import { createElbowBlend } from './elbowBlend.js';
 import { createElbowCorrectives } from './elbowCorrectives.js';
 import { createShoulderCorrectives } from './shoulderCorrectives.js';
 import { createArmSoftening } from './armSoftening.js';
+import { createSpeechFace } from './SpeechFace.js';
 
 /** Build a native, editable Three.js model without GLTFLoader or a GLB. */
 export function createZackModel(manifest, buffer, texture = null) {
@@ -202,6 +203,7 @@ export function createZackModel(manifest, buffer, texture = null) {
   root.userData.shoulderCorrectives = shoulderCorrectives.report;
   const armSoftening = createArmSoftening({ root, mesh, geometry, skeleton, bones, material });
   root.userData.armSoftening = armSoftening.report;
+  const speechFace = createSpeechFace({ root, mesh, geometry, material, bones });
   joints.needsUpdate = weights.needsUpdate = true;
   for (let vertex = 0; vertex < joints.count; vertex++) {
     let slot = 0;
@@ -219,6 +221,7 @@ export function createZackModel(manifest, buffer, texture = null) {
     mesh.computeBoundingSphere();
   }
   function reset() {
+    speechFace.reset();
     armSoftening.reset();
     elbowCorrectives.reset();
     shoulderCorrectives.reset();
@@ -232,7 +235,7 @@ export function createZackModel(manifest, buffer, texture = null) {
     geometry.attributes.normal.needsUpdate = true;
     refreshGeometry(false);
   }
-  return { root, mesh, geometry, material, skeleton, bones, regions, refreshGeometry, reset, armTwist, elbowCorrectives, shoulderCorrectives, armSoftening,
+  return { root, mesh, geometry, material, skeleton, bones, regions, refreshGeometry, reset, armTwist, elbowCorrectives, shoulderCorrectives, armSoftening, speechFace,
     setTexture(nextTexture) {
       if (nextTexture === activeTexture) return activeTexture;
       const previousTexture = activeTexture;

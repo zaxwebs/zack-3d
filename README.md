@@ -63,6 +63,25 @@ Chest vertices are anchored to the spine by removing leaked arm/clavicle weights
 
 The rig audit also removes thigh influence from the hoodie above the hem, with a smooth transition between heights 0.405 and 0.450. This keeps the pocket and abdomen stable during leg lifts. `root.userData.hoodieWeightCorrection` records the change. `rig.setHeadTurn(degrees)` turns the head around the character's upright axis, uses the active mode's yaw limit, and preserves the turn when switching poses. Pose selection restores the original bone positions and scales as well as rotations. See `RIG_AUDIT.md` for scope, evidence, and remaining limitations.
 
+## Microphone speech
+
+The **Live speech** section adds local microphone-driven mouth motion. Select **Face close-up**, then **Preview speech** to inspect the open, wide, and rounded shapes without microphone access. **Start mic** requests browser permission and follows your voice; **Stop mic** releases capture and closes the mouth. Select a microphone before starting, increase sensitivity for quiet speech, and raise the noise gate to reject room noise. Capture requires localhost or HTTPS. Permission denial, interruption, and disconnected devices are reported in the panel.
+
+Speech uses three relative face shapes and a procedural surface mouth on the original sealed face. It adds no vertices, triangles, or bones. This is a stylized approximation driven by loudness and broad frequency bands, rather than phoneme recognition or full facial capture. It runs alongside body mocap and head turns. The default closed smile returns exactly at rest. Audio stays in the browser; it is not recorded or uploaded. The JSON exporter bakes the current painted mouth and preserves the current face shapes as a portable still pose.
+
+```js
+import { SpeechAudio } from './SpeechAudio.js';
+const speech = new SpeechAudio(zack.speechFace);
+// Call from a user gesture. Optionally pass a microphone device ID.
+await speech.start();
+// In the animation loop, after body animation:
+speech.update(deltaSeconds);
+// On stop or teardown (before disposing the model):
+speech.stop();
+```
+
+For manual posing, use `zack.speechFace.setPose({ open: 0.7, spread: 0.2, round: 0.6 })`, with each value between 0 and 1; `zack.speechFace.reset()` restores rest. The material overlay appears in Textured mode; Clay and Wireframe show only the small geometry deformation. Run `npm run test:speech` with the dev server running. See [the research and implementation notes](docs/LIP_SYNC_RESEARCH.md) for historical references, tradeoffs, signal timing, and verification details. Synthetic microphone tests do not substitute for checking your physical input and browser permission.
+
 ## Use in another Three.js project
 
 Copy `src/` and `public/model/` into your project. Install `three`, then:

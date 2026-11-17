@@ -30,6 +30,13 @@
     input[type="range"]{width:100%;height:16px;margin:5px 0 0;accent-color:var(--accent)}input[type="color"]{padding:2px 4px}
     .check-row{justify-content:flex-start;cursor:pointer}.check-row input{margin:0 1px 0 0;accent-color:var(--accent)}
     .inline-check{display:flex;gap:14px;padding-top:4px}.action-row{display:flex;gap:6px}.action-row button{flex:1;text-align:center}
+    .speech-status{margin:9px 0;color:#b8b8b8;font-size:11px;line-height:1.5;min-height:33px}
+    .speech-status[data-state="live"]{color:#a4d5a2}.speech-status[data-state="error"]{color:#ffb4a8}
+    .speech-meter{height:6px;background:#191919;border-radius:3px;overflow:hidden;margin:9px 0 4px}
+    .speech-meter-fill{height:100%;width:0;background:#e88b36;transition:width 60ms linear}
+    .speech-readout{display:flex;justify-content:space-between;color:#aaa;font-size:10px;font-variant-numeric:tabular-nums;margin-bottom:11px}
+    .speech-note{color:#999;font-size:10px;line-height:1.5;margin:9px 0 0}
+    .action-row button[aria-pressed="true"]{background:#654a32;border-color:#bd793b}.action-row button:disabled{opacity:.5;cursor:default}
     @media(max-width:760px){.workspace{grid-template-columns:minmax(0,1fr) 270px}}
     @media(max-width:580px){.workspace{grid-template-columns:1fr;grid-template-rows:minmax(210px,54vh) minmax(0,1fr)}.properties{border-left:0;border-top:1px solid #171717}.panel-title{height:34px;flex-basis:34px}.panel-scroll{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));align-content:start}.section{border-right:1px solid #1b1b1b}.viewport-top{top:8px;left:8px}}
     #poseDescription{margin:9px 0 0;color:#b8b8b8;font-size:11px;line-height:1.5;min-height:33px}
@@ -85,6 +92,20 @@
     <aside class="properties" aria-label="Model properties">
       <div class="panel-title">Properties</div>
       <div class="panel-scroll">
+        <section class="section" aria-label="Live speech">
+          <div class="section-title">Live speech</div>
+          <div class="section-content">
+            <div class="action-row"><button id="speechMic" type="button" aria-pressed="false">Start mic</button><button id="speechPreview" type="button" aria-pressed="false">Preview speech</button></div>
+            <p id="speechStatus" class="speech-status" role="status" aria-live="polite">Mic off. Preview the motion or start your microphone.</p>
+            <label class="field" for="speechDevice"><span class="field-label">Microphone</span><select id="speechDevice"><option value="">Default microphone</option></select></label>
+            <div id="speechMeter" class="speech-meter" role="meter" aria-label="Microphone level" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div id="speechMeterFill" class="speech-meter-fill"></div></div>
+            <div class="speech-readout"><span id="speechLevel">Silent</span><span id="speechShape">Rest</span></div>
+            <label class="field" for="speechSensitivity"><span class="field-label">Sensitivity <output id="speechSensitivityValue">1.0×</output></span><input id="speechSensitivity" type="range" min="0.5" max="4" step="0.1" value="1"></label>
+            <label class="field" for="speechGate"><span class="field-label">Noise gate <output id="speechGateValue">−52 dB</output></span><input id="speechGate" type="range" min="-70" max="-25" step="1" value="-52"></label>
+            <div class="action-row"><button id="speechFocus" type="button">Face close-up</button><button id="fullBody" type="button">Full body</button></div>
+            <p class="speech-note">Audio stays in this browser. Simple speech shapes, with no recording or upload. Higher gate values reject more background noise.</p>
+          </div>
+        </section>
         <section class="section">
           <div class="section-title">Pose</div>
           <div class="section-content">

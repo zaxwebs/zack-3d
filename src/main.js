@@ -6,6 +6,7 @@ import { createZackRig, POSES } from './ZackRig.js';
 import { MocapController } from './MocapController.js';
 import { AnimationTimeline } from './AnimationTimeline.js';
 import { MOCAP_CONFIG } from './mocapConfig.js';
+import { SpeechAudio } from './SpeechAudio.js';
 
 const viewport = document.querySelector('#viewport');
 const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
@@ -59,6 +60,8 @@ let helper;
 let selectedPose = 'down';
 let mocapController;
 let timeline;
+let speech;
+let speechMeterTime = 0;
 let cameraTarget = new THREE.Vector3();
 const mocapFollowOffset = new THREE.Vector3();
 const mocapFollowTarget = new THREE.Vector3();
@@ -110,6 +113,54 @@ try {
   let map = model.material.map;
   rig = createZackRig(model);
   resetMocapFollow();
+
+  const refreshSpeechDevices = async () => {
+    if (!navigator.mediaDevices?.enumerateDevices) return;
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const select = output('#speechDevice'), selected = select.value;
+      select.replaceChildren(new Option('Default microphone', ''));
+      devices.filter(device => device.kind === 'audioinput' && device.deviceId !== 'default').forEach((device, i) => {
+        select.add(new Option(device.label || `Microphone ${i + 1}`, device.deviceId));
+      });
+      if ([...select.options].some(option => option.value === selected)) select.value = selected;
+    } catch { /* Input enumeration is optional; the default device still works. */ }
+  };
+  speech = new SpeechAudio(model.speechFace, state => {
+    const active = ['live', 'requesting'].includes(state.state);
+    output('#speechMic').textContent = state.state === 'requesting' ? 'Cancel mic' : active ? 'Stop mic' : 'Start mic';
+    output('#speechMic').setAttribute('aria-pressed', String(active));
+    output('#speechPreview').textContent = state.state === 'demo' ? 'Stop preview' : 'Preview speech';
+    output('#speechPreview').setAttribute('aria-pressed', String(state.state === 'demo'));
+    output('#speechDevice').disabled = active;
+    output('#speechStatus').textContent = state.message;
+    output('#speechStatus').dataset.state = state.state;
+    if (state.state === 'live') refreshSpeechDevices();
+  });
+  output('#speechMic').addEventListener('click', () => {
+    if (['live', 'requesting'].includes(speech.state)) speech.stop();
+    else speech.start(output('#speechDevice').value);
+  });
+  output('#speechPreview').addEventListener('click', () => speech.state === 'demo' ? speech.stop() : speech.preview());
+  output('#speechSensitivity').addEventListener('input', event => {
+    speech.envelope.sensitivity = Number(event.target.value);
+    output('#speechSensitivityValue').value = `${speech.envelope.sensitivity.toFixed(1)}×`;
+  });
+  output('#speechGate').addEventListener('input', event => {
+    speech.envelope.gateDb = Number(event.target.value);
+    output('#speechGateValue').value = `${speech.envelope.gateDb} dB`;
+  });
+  output('#speechFocus').addEventListener('click', () => {
+    model.root.updateMatrixWorld(true);
+    cameraTarget.copy(model.speechFace.getWorldAnchor());
+    controls.target.copy(cameraTarget);
+    camera.position.copy(cameraTarget).add(new THREE.Vector3(0, 0.015, 0.74));
+    controls.update(); resetMocapFollow();
+  });
+  output('#fullBody').addEventListener('click', () => { frameModel(); resetMocapFollow(); });
+  navigator.mediaDevices?.addEventListener('devicechange', refreshSpeechDevices);
+  refreshSpeechDevices();
+  window.addEventListener('pagehide', () => speech.stop());
 
   const textureButtons = [...document.querySelectorAll('[data-texture-size]')];
   const textureStatus = output('#textureStatus');
@@ -224,7 +275,7 @@ try {
 
   window.zack = model;
   window.zackRig = rig;
-  window.studio = { scene, camera, renderer, controls, mocapActions: mocapController.actions, mocapController };
+  window.studio = { scene, camera, renderer, controls, mocapActions: mocapController.actions, mocapController, speech };
   mocapController.load().catch(() => {});
 } catch (error) {
   output('#error').textContent = error.message;
@@ -235,6 +286,16 @@ const animationClock = new THREE.Clock();
 renderer.setAnimationLoop(() => {
   const delta = Math.min(animationClock.getDelta(), 0.05);
   mocapController?.update(delta);
+  speech?.update(delta);
+  speechMeterTime += delta;
+  if (speech && speechMeterTime >= 0.08) {
+    speechMeterTime = 0;
+    const level = Math.round(speech.level * 100), pose = model.speechFace.state;
+    output('#speechMeterFill').style.width = `${level}%`;
+    output('#speechMeter').setAttribute('aria-valuenow', String(level));
+    output('#speechLevel').textContent = speech.state === 'live' ? `${Math.round(speech.envelope.db)} dB` : speech.state === 'demo' ? 'Preview' : 'Silent';
+    output('#speechShape').textContent = pose.open < 0.06 ? 'Rest' : pose.round > 0.55 ? 'Rounded' : pose.spread > 0.55 ? 'Wide' : 'Open';
+  }
   timeline?.update();
   followMocap();
   controls.update();
