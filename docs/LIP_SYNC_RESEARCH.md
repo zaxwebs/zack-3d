@@ -1,57 +1,72 @@
-# Live speech for Zack
+# Live speech and the split mouth
 
-Implemented on `feature/microphone-lip-sync`, November 17, 2026.
+Updated November 17, 2026, on `feature/microphone-lip-sync`.
 
-## Findings from the model
+## Checkpoints
 
-Zack is one textured, skinned mesh. The face has a sculpted, painted closed smile, but no jaw joint, mouth cavity, tongue, teeth geometry, or authored speech targets. Moving the head bone alone cannot open the mouth. The current runtime mesh, including the existing clothing/shoe repairs, has 22,886 vertex records and 10,731 triangles. The speech feature adds **zero vertices, zero triangles, and zero bones**. It adds three relative position/normal targets on existing records.
+- `d0b6ae7` on `animation-fixes` commits the earlier elbow/shoulder corrections, arm surface pass, and run-loop work.
+- `579e267` on `feature/microphone-lip-sync` preserves the first microphone feature and its surface-painted mouth.
+- The current version replaces that painted aperture with an actual split in the smile, recessed mouth geometry, and a seated tooth band. Microphone analysis and its controls retain their previous behavior.
 
-There is an unavoidable tradeoff: a sealed surface cannot expose a physical oral cavity without changing its topology. This implementation uses a surface mouth, with a small amount of real chin and cheek deformation. It suits a stylized streaming avatar at front and three-quarter views. It is not a full anatomical facial rig. The underlying sculpted smile can remain subtly visible beside narrow rounded shapes, especially in strong lighting or extreme close-ups.
+## Research and design decisions
 
-## Research and what transfers
-
-| Reference | Technique supported by the source | Useful lesson here |
+| Primary source | Relevant technique | Application to Zack |
 | --- | --- | --- |
-| [Valve's Half-Life SDK renderer](https://github.com/ValveSoftware/halflife/blob/master/cl_dll/StudioModelRenderer.cpp) | `StudioCalcBoneAdj` maps a single `mouthopen` value into a model bone-controller range and clamps it. | A scalar speaking envelope is a useful inexpensive baseline. It cannot convey vowel shape by itself. |
-| [Valve's Source SDK facial controller](https://github.com/ValveSoftware/source-sdk-2013/blob/master/src/game/client/c_baseflex.cpp) | Weighted visemes, weak/normal/strong emphasis settings, overlapping phoneme intervals, and temporal filtering. | Blend a compact set of shapes and smooth their transitions. This is later published SDK code in the Half-Life 2 engine family, not a verified copy of its 2004 shipping code. |
-| [Kalberer, Müller, and Van Gool: Speech Animation using Viseme Space, 2002](https://homes.esat.kuleuven.be/~konijn/publications/2002/eth_biwi_00243.pdf) | Compact learned deformation modes adapted to a face, with coarticulation between speech shapes. | Shape interpolation matters as much as the number of poses. More polygons alone do not solve speech timing. |
-| [Disney Research: Dynamic Units of Visual Speech, 2012](https://la.disneyresearch.com/publication/dynamic-units-of-visual-speech/) | Moving speech gestures rather than only static phoneme poses; evaluation uses phonetically annotated audio. | Avoid abrupt pose swapping. The paper's result does not imply that an RMS meter can recognize phonemes. |
-| [Pixar: Inside Out 2 Character Rig Challenges and Techniques, 2024](https://research.pixar.com/docs/2024.SiggraphTalks.HNSZ.pdf) | Independent broad silhouette, mouth-corner, lip refinement, and teeth controls for Anxiety. | Borrow the separation of opening, width, rounding, and interior appearance. This lightweight implementation does not reproduce Pixar's production tooling. |
-| [Disney's animation process](https://www.disneyanimation.com/process/animation/) | Timing, staging, squash/stretch, anticipation, follow-through, and secondary action. | Prefer readable, restrained shapes with fast response and a softer close. Live input cannot anticipate an unknown future sound without buffering. |
+| [Valve Half-Life SDK renderer](https://github.com/ValveSoftware/halflife/blob/master/cl_dll/StudioModelRenderer.cpp) | A scalar `mouthopen` value drives a bone-controller range. | A lightweight opening envelope remains a useful live input, even with a more capable mouth mesh. |
+| [Valve Source SDK facial controller](https://github.com/ValveSoftware/source-sdk-2013/blob/master/src/game/client/c_baseflex.cpp) | Weighted visemes, emphasis settings, overlapping intervals, and temporal filtering. | Blend a few readable shapes smoothly. This is later published code in the Half-Life 2 engine family, not a verified copy of its 2004 shipping code. |
+| [Speech Animation using Viseme Space, 2002](https://homes.esat.kuleuven.be/~konijn/publications/2002/eth_biwi_00243.pdf) | Compact deformation modes and coarticulation adapted to different faces. | Separate shape authoring from the audio driver; extra polygons alone do not improve timing. |
+| [Disney Research: Dynamic Units of Visual Speech, 2012](https://la.disneyresearch.com/publication/dynamic-units-of-visual-speech/) | Speech is modeled as moving gestures, with evaluation using phonetically annotated audio. | Smooth the transitions. Broad audio bands do not provide the phonetic information used by that research. |
+| [Autodesk Softimage: Modeling the Mouth Area](https://download.autodesk.com/global/docs/softimage2014/en_us/files/face_modeling_ModelingtheMouthArea.htm) | Closed lips with carefully separated corners; inner lip surfaces continue into a recessed mouth. | Split the existing crease, retain shared corner endpoints, and build a lining that remains attached to both moving lips. Avoid placing a disconnected dark plane behind the face. |
+| [Pixar: Inside Out 2 Character Rig Challenges and Techniques, 2024](https://research.pixar.com/docs/2024.SiggraphTalks.HNSZ.pdf) | Distinct broad silhouette, corner, lip-refinement, and teeth controls for Anxiety. | Keep jaw motion, width/rounding, and tooth seating distinct. The lightweight rig here does not reproduce Pixar's production system. |
+| [Three.js BufferGeometry](https://threejs.org/docs/pages/BufferGeometry.html) and [SkinnedMesh](https://threejs.org/docs/pages/SkinnedMesh.html) | Indexed attributes, material groups, relative morphs, and bone weights. Morph layout is established before rendering. | Cut and author targets once during model construction. Reuse one skeleton and ordinary material groups; animate weights rather than rebuilding geometry. |
 
-These references span the inexpensive controller approach of older games, period speech research, the more elaborate Source approach, and modern film articulation. They are not evidence that all early-2000s games shared one facial-animation system. The hybrid used here is an implementation choice based on Zack's actual asset constraints.
+The initial surface mouth was an inexpensive retrofit for a sealed asset. The new requirement explicitly allows a local opening, so a true lip split is now the appropriate solution. Full remeshing, subdivision, extra facial bone chains, and runtime booleans are unnecessary for this low-poly target.
 
-## Options considered
+## Geometry and attachment
 
-| Option | Geometry cost | Live suitability | Decision |
-| --- | --- | --- | --- |
-| One amplitude-driven jaw joint | No new polygons, but needs a working lip opening and cavity | Very responsive, limited expression | Asset lacks a jaw/cavity; a joint alone would stretch the sealed smile. |
-| Discrete texture mouth swaps | No new polygons | Very cheap; transitions can pop | Useful low-poly aesthetic, but use continuous shape controls for softer motion. |
-| Authored 3D viseme targets | Targets reuse vertex count; cavity may require a mesh edit | Excellent with an appropriate driver | Three small surface-deformation targets are used now; anatomical visemes need further asset authoring. |
-| Surface mouth plus small face shapes | No new polygons or bones | Local, inexpensive, works with existing skinning | Chosen retrofit: procedural interior, teeth band, tongue accent, subtle jaw/corner motion. |
-| Neural audio-to-viseme or face tracking | Usually no new topology for inference, but suitable controls still needed | More expressive; model/runtime cost and latency need evaluation | Possible later driver upgrade. It cannot create a missing oral cavity. |
+The pre-mouth runtime, including existing repairs and sole caps, contains **22,886 vertex records and 10,731 triangles**. The new model contains **23,052 records and 10,965 triangles**. The difference is **166 records and 234 triangles**, about 2.18% more triangles. No outer-face triangles or bones are added.
 
-## Implemented signal path
+`src/mouthTopology.js` defines 13 inspected source landmarks following 12 connected edges of the smile. It verifies that each edge has two incident faces and that each internal landmark has two separable surface fans. The lower fan receives duplicated records with the same attributes; the original triangles retain their order and shape. All pre-existing positions, normals, UVs, and weights remain unchanged by this topology operation. Only the lower fan's index references change. This operation happens before weight corrections, rest snapshots, and corrective-shape authoring, so their arrays all have the final vertex count.
 
-`getUserMedia` → mono Web Audio source → 1,024-sample analyser → RMS and broad spectral bands → gate/envelope → three face targets and mouth-material uniforms.
+The mouth corners remain shared endpoints. Separate lip edges can therefore open in the middle while remaining attached at both ends. Three rings extend from the opening into the head and close at a back cap. The outer lining ring has exactly the same position, weights, and speech displacement as the corresponding lip records. Its attachment is geometric across the material boundary; it is not a floating overlay.
 
-- Access starts only after **Start mic**. **Preview speech** never requests microphone access.
-- Audio is processed locally, with no recording, transcription, network inference, upload, or audible microphone monitoring.
-- RMS is calculated after removing the sample mean, so a DC offset does not open the mouth.
-- A configurable gate defaults to −52 dBFS, with 3 dB opening hysteresis, a 45 ms hold, 25 ms attack, and 75 ms release. Sensitivity adjusts gain before the gate and aperture mapping.
-- Energy in 150–700 Hz, 700–2,200 Hz, and 2,200–6,000 Hz provides a **rough** rounded-versus-wide bias. These are acoustic heuristics, not vowel or language recognition. Voice timbre, microphone response, and noise affect the estimates.
-- The same three relative targets reuse existing facial vertices. UV duplicates receive identical position offsets. Bone weights, indices, UVs, and base attributes stay unchanged.
-- Mouth coordinates are taken before morphing/skinning, so the painted aperture follows the face through head and body motion. Only facial morph slots are written; body corrective slots remain independent.
-- Live rendering changes uniforms and morph weights rather than re-uploading a full texture every frame. A JSON export bakes the current mouth into a texture and retains standard relative shapes, so its still pose loads without the custom shader.
+The added triangles are 120 for the lining, 84 for the curved upper tooth band, and 30 for the tongue. They use three additional materials on the **same skinned mesh**. The tooth band has thickness and is inset behind the lip. Its top extends into the upper lip, while width and rounding follow the upper seam. This avoids both a dark gap above the teeth and teeth sticking through compressed cheeks. The tongue follows a smaller fraction of lower-jaw motion. The lining closes the oral cavity; a complete tongue underside and individual teeth are intentionally not modeled.
 
-Web APIs were checked against [MDN's microphone documentation](https://developer.mozilla.org/en-US/docs/Web/API/MediaDevices/getUserMedia), [AnalyserNode documentation](https://developer.mozilla.org/en-US/docs/Web/API/AnalyserNode), and [AudioContext constructor documentation](https://developer.mozilla.org/en-US/docs/Web/API/AudioContext/AudioContext). A 1,024-sample window spans about 21 ms at 48 kHz; device capture, browser processing, animation scheduling, and smoothing add latency. The interactive latency setting is a request, not a guarantee. No end-to-end physical-microphone latency is claimed.
+## Shape authoring and nose protection
 
-## Operating and validating
+`src/SpeechFace.js` builds relative jaw, spread, and round targets. Jaw opening separates the actual mesh; it no longer paints an oval over a closed face. The lower lip opens more than the chin, and the chin retains roughly 0.01 model units of downward travel at full opening. Width and rounding use a local horizontal falloff rather than scaling the whole lower head.
 
-Run `npm run dev`, open the localhost viewer, select **Face close-up**, and try **Preview speech**. Then select **Start mic** and allow the browser's permission prompt. Choose the input, adjust sensitivity for quiet speech, and raise the noise gate if room noise opens the mouth. Stop and restart to change inputs. HTTPS is required outside localhost. The browser can deny or interrupt capture independently of the app.
+Vertices and normals at or above rest height 0.749 are protected. The transition below this plane fades smoothly. A positive-weight displacement solve on the connected upper-face surface distributes the lip motion between fixed lip landmarks and the pinned nose/outer region. The lower lip retains its authored jaw motion, preventing its near-edge triangles from curling backward during a wide opening. Imported normal detail is transported by the change in the welded surface normal, with separate upper/lower fans at the slit and matching transport across ordinary UV seams.
 
-`npm run test:speech` checks the signal envelope, noise rejection, response, frame-rate independence, deformation scope, unchanged mesh arrays, seam consistency, corrective independence, and reset. Its Chrome regression supplies a generated WAV through the browser's fake microphone capture to exercise the actual `getUserMedia`/Web Audio path. It also checks silence, stop/retry, denied access, cancellation with a late stream, interrupted audio, track end, page exit, head turning, mocap layering, mobile layout, surface modes, and standard JSON round trips. Captures and results are written under `artifacts/speech/`. These tests do not validate the user's physical microphone, permissions, voice, or acoustic environment.
+The solve and normal generation run only when constructing the model. Playback writes the same three weights: `open`, `open * spread`, and `open * round`. It does not run a mesh-cut operation, topology search, smoothing solve, or CPU vertex deformation each frame. Temporary authoring data is not needed by the live controller.
 
-The next quality step would be a small authored cavity/lip opening if side-profile fidelity becomes important, then a real phonetic driver for closed-lip consonants and more accurate vowel transitions. Both can reuse the current audio/controller boundary.
+## Audio, rendering, and export
 
-Validation on this branch passed `test:speech`, `test:correctives`, `test:shoulders`, `test:soft-arms`, `test:run`, the production build, and `git diff --check`. The older default `npm test` fails in its source-GLB vertex comparison: the current repaired runtime has additional records beyond the source mesh. Replacing the speech module with a no-op in a temporary browser route reproduces the identical failure, confirming that it is independent of this feature. The legacy comparison was left unchanged.
+`getUserMedia` → mono Web Audio analyser → RMS and broad frequency bands → gate/envelope → three relative shape weights.
+
+Microphone behavior is unchanged: explicit start, local processing, no recording/upload/transcription, input selection, sensitivity, gate, cancellation, interruption handling, and cleanup. Defaults remain a −52 dBFS gate, 3 dB opening hysteresis, 45 ms gate hold, 25 ms attack, and 75 ms release. A 1,024-sample analysis window spans about 21 ms at 48 kHz. Device capture and browser processing add latency; no physical end-to-end timing is claimed. API references: [microphone capture](https://developer.mozilla.org/en-US/docs/Web/API/MediaDevices/getUserMedia), [AnalyserNode](https://developer.mozilla.org/en-US/docs/Web/API/AnalyserNode), and [AudioContext](https://developer.mozilla.org/en-US/docs/Web/API/AudioContext/AudioContext).
+
+Broad energy bands only bias rounded versus wide shapes. They do not identify vowels, closed-lip consonants, or language. This remains a stylized live speaking persona rather than phonetic reconstruction or performance capture.
+
+The original face texture moves with the real lip surface. The old procedural mouth shader and export texture-baking module have been removed. Mouth materials are culled when fully closed, giving **one model draw call while silent and four while speaking** in the viewer. No full texture is uploaded per audio frame. Textured, Clay, and Wireframe modes all expose the same physical opening. The occluded interior is hidden at exact rest to avoid subpixel seam artifacts and unnecessary draws; the closed geometry is also checked independently by ray tests.
+
+JSON snapshots contain the lip split, lining, teeth, tongue, ordinary material groups, skin weights, and current relative shapes. A standard `THREE.ObjectLoader` reproduces the still pose without speech-specific code. The existing arm surface pass still supplies its own native snapshot morph. Animating an exported asset later requires supplying shape weights, as before.
+
+## Validation
+
+Run `npm run test:speech` with the dev server running. It includes:
+
+- Audio envelope response, silence/noise rejection, DC rejection, gain, and frame-rate independence.
+- An isolated mouth-cut check proving all old attributes and outer triangle order are retained, except the documented lower-lip index remap.
+- 45 open/spread/round combinations; fixed nose records; chin travel; matching lining/lip positions; closed corners; no checked front-facing lip triangle folding backward.
+- Ray tests for an actual cavity, tooth seating within 1.2 mm of the upper edge, closed-mouth occlusion, and tooth clearance in wide/rounded poses.
+- 567 local edges checked for a two-face fan across the opened skin/lining surface; no open seam or non-manifold edge in that tested region.
+- Stable buffers and morph arrays over 1,000 updates, followed by exact reset.
+- A generated synthetic WAV through Chrome's fake microphone capture, exercising actual `getUserMedia` and Web Audio; cancellation, denial/retry, late streams, interruption, disconnection, and page-exit cleanup.
+- Front, three-quarter, profile, clay, wireframe, and mobile captures; head turns; mocap layering; draw counts; and standard JSON round trips.
+
+Captures and reports are written under `artifacts/speech/`. Geometry checks observed zero nose displacement and zero lining-attachment error in the tested cases, with no extra outer triangles. These checks do not constitute a general collision proof for every conceivable facial edit. Synthetic input does not validate a particular physical microphone or room.
+
+The completed pass also passed the elbow, shoulder, and arm-softening geometry checks; the elbow, shoulder, and Shovel browser regressions; run-loop continuity; rig/skin-weight/export checks; all static pose presets; the isolated hand-seam checks; the production build; and `git diff --check`. Browser regressions were run serially on the finished source to avoid software-renderer contention and development-server reloads during capture. Detailed final browser/rig/build results are in `artifacts/speech/validation/`.
+
+The default source comparison has been updated to compare all original source records, recognize the documented earlier repairs, and verify the mouth additions rather than reading beyond the source GLB. Its later legacy `inspect-poses.mjs` chest audit still reports 0.0034573285 units of movement where it expects less than 0.000001. Running that audit with the complete saved `579e267` model and mouth implementation reproduces the exact same failure, independently of the new mouth. The chest behavior and that audit's limit were left unchanged.

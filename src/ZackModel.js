@@ -13,6 +13,7 @@ import { createElbowCorrectives } from './elbowCorrectives.js';
 import { createShoulderCorrectives } from './shoulderCorrectives.js';
 import { createArmSoftening } from './armSoftening.js';
 import { createSpeechFace } from './SpeechFace.js';
+import { createMouthTopology } from './mouthTopology.js';
 
 /** Build a native, editable Three.js model without GLTFLoader or a GLB. */
 export function createZackModel(manifest, buffer, texture = null) {
@@ -109,6 +110,7 @@ export function createZackModel(manifest, buffer, texture = null) {
   root.userData.shoeSoleCorrection = repairShoeSoleHoles(geometry);
   root.userData.shoeLaceGapCorrection = repairShoeLaceGaps(geometry);
   root.userData.clothingSeamCorrection = repairClothingSeams(geometry);
+  const mouthTopology = createMouthTopology({ root, mesh, geometry, material, skeleton, bones });
   const restTransforms = skeleton.bones.map(bone => ({ position: bone.position.clone(), quaternion: bone.quaternion.clone(), scale: bone.scale.clone() }));
   const restPositions = geometry.attributes.position.array.slice();
   const restNormals = geometry.attributes.normal.array.slice();
@@ -203,7 +205,7 @@ export function createZackModel(manifest, buffer, texture = null) {
   root.userData.shoulderCorrectives = shoulderCorrectives.report;
   const armSoftening = createArmSoftening({ root, mesh, geometry, skeleton, bones, material });
   root.userData.armSoftening = armSoftening.report;
-  const speechFace = createSpeechFace({ root, mesh, geometry, material, bones });
+  const speechFace = createSpeechFace({ root, mesh, geometry, bones, mouthTopology });
   joints.needsUpdate = weights.needsUpdate = true;
   for (let vertex = 0; vertex < joints.count; vertex++) {
     let slot = 0;
@@ -245,7 +247,7 @@ export function createZackModel(manifest, buffer, texture = null) {
       previousTexture?.dispose();
       return activeTexture;
     },
-    dispose() { geometry.dispose(); material.dispose(); skeleton.dispose(); activeTexture?.dispose(); } };
+    dispose() { speechFace.dispose(); geometry.dispose(); material.dispose(); skeleton.dispose(); activeTexture?.dispose(); } };
 }
 
 export async function loadZackModel(baseUrl = '/model/', { textureSize = 'auto' } = {}) {

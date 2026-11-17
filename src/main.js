@@ -237,6 +237,7 @@ try {
   selectPose('down');
 
   output('#surface').addEventListener('change', event => {
+    model.speechFace.setSurface(event.target.value);
     model.material.map = event.target.value === 'textured' ? map : null;
     model.material.wireframe = event.target.value === 'wire';
     model.material.color.set(event.target.value === 'textured' ? '#ffffff' : '#b3b3b3');

@@ -1,132 +1,142 @@
 import * as THREE from 'three';
-import { bakeSpeechTexture } from './speechSnapshot.js';
 
 const { clamp, smoothstep } = THREE.MathUtils;
 const finite = value => Number.isFinite(value) ? clamp(value, 0, 1) : 0;
 
-// A sealed, texture-painted face cannot reveal a real mouth cavity without
-// cutting new topology. This surface mouth follows the existing skin and adds
-// three small, relative face shapes without adding vertices or triangles.
-export function createSpeechFace({ root, mesh, geometry, material, bones }) {
-  root.updateMatrixWorld(true);
-  const toFace = root.matrixWorld.clone().invert().multiply(mesh.matrixWorld)
-    .multiply(mesh.bindMatrixInverse).multiply(bones.Head.matrixWorld)
-    .multiply(mesh.skeleton.boneInverses[mesh.skeleton.bones.indexOf(bones.Head)])
-    .multiply(mesh.bindMatrix);
-  const fromFace = new THREE.Matrix3().setFromMatrix4(toFace).invert();
-  const position = geometry.attributes.position;
-  const points = Array.from({ length: position.count }, (_, i) =>
-    new THREE.Vector3().fromBufferAttribute(position, i).applyMatrix4(toFace));
-  const firstTarget = geometry.morphAttributes.position?.length ?? 0;
-  const targets = ['SpeechJaw', 'SpeechSpread', 'SpeechRound'];
-  const activeVertices = new Set();
-  const rest = geometry.clone();
-  rest.computeVertexNormals();
+/** Author local lip/jaw shapes on a real split, with a connected lining. */
+export function createSpeechFace({ root, mesh, geometry, bones, mouthTopology: topology }) {
+  const { facePoints: points, motion, lipSides, sampleSeam, centerX, halfWidth, outerVertices, fromFace, innerMaterials } = topology;
+  const fromFaceDirection = new THREE.Matrix3().setFromMatrix4(fromFace);
+  const firstTarget = geometry.morphAttributes.position?.length ?? 0, targets = ['SpeechJaw', 'SpeechSpread', 'SpeechRound'];
+  const position = geometry.attributes.position, normal = geometry.attributes.normal, activeVertices = new Set();
+
+  function faceDelta(point, side, shape) {
+    // The nose is protected. Chin and lip motion have separate local falloffs.
+    if (point.y >= 0.749 || point.y <= 0.660 || point.z <= 0.065) return new THREE.Vector3();
+    const x = point.x - centerX, curveY = sampleSeam(point.x).y, distance = point.y - curveY;
+    const t = x / halfWidth, profile = Math.max(0, 1 - t * t) ** 0.85;
+    const front = smoothstep(point.z, 0.065, 0.105), noseLock = 1 - smoothstep(point.y, 0.742, 0.749);
+    if (shape === 0) {
+      const lower = side === -1 || (side !== 1 && distance < -0.000001);
+      if (lower) {
+        const jaw = smoothstep(point.y, 0.660, 0.694) * front * profile;
+        const lip = 1 - smoothstep(Math.abs(distance), 0.004, 0.035);
+        return new THREE.Vector3(0, -(0.009 + 0.014 * lip) * jaw, -0.0020 * jaw);
+      }
+      const upper = (1 - smoothstep(Math.abs(distance), 0.001, 0.013)) * front * profile * noseLock;
+      return new THREE.Vector3(0, 0.0014 * upper, 0.0005 * upper);
+    }
+    const sideFade = 1 - smoothstep(Math.abs(x), halfWidth, halfWidth * 1.85);
+    const lip = (1 - smoothstep(Math.abs(distance), 0.004, 0.025)) * front * noseLock * sideFade;
+    const upperSide = side === 1 || (side !== -1 && distance >= -0.000001);
+    const roundY = ((upperSide ? 0.004 * profile : 0) - 0.006 * (1 - profile)) * lip;
+    return shape === 1 ? new THREE.Vector3(x * 0.12 * lip, 0, 0)
+      : new THREE.Vector3(-x * 0.40 * lip, roundY, 0.004 * lip * Math.max(0, 1 - t * t));
+  }
+
+  // Normal transport preserves the imported shading detail and ordinary UV
+  // seams. The two lip fans intentionally remain independent at the split.
+  const normalGroups = [], groupByKey = new Map(), vertexGroup = [];
+  for (let i = 0; i < position.count; i++) {
+    const key = i < outerVertices ? `${position.getX(i)},${position.getY(i)},${position.getZ(i)}:${lipSides[i]}` : `inner:${i}`;
+    if (!groupByKey.has(key)) { groupByKey.set(key, normalGroups.length); normalGroups.push([]); }
+    const group = groupByKey.get(key); normalGroups[group].push(i); vertexGroup.push(group);
+  }
+  const neighbors = normalGroups.map(() => new Set());
+  for (let i = 0; i < topology.report.sourceTriangles * 3; i += 3) for (let k = 0; k < 3; k++) {
+    const a = vertexGroup[geometry.index.array[i + k]], b = vertexGroup[geometry.index.array[i + (k + 1) % 3]];
+    if (a !== b) { neighbors[a].add(b); neighbors[b].add(a); }
+  }
+  const lipGroups = new Set([...topology.upper, ...topology.lower].map(i => vertexGroup[i]));
+  const free = normalGroups.flatMap((vertices, group) => {
+    const i = vertices[0], p = points[i];
+    return i < outerVertices && !lipGroups.has(group) && p.y >= sampleSeam(p.x).y && p.y < 0.749 && p.z > 0.065 && Math.abs(p.x - centerX) < 0.085 ? [group] : [];
+  });
+  const neighborWeights = new Map(free.map(group => {
+    const p = points[normalGroups[group][0]], links = [...neighbors[group]].map(other => ({ group: other,
+      weight: 1 / Math.max(0.001, p.distanceTo(points[normalGroups[other][0]])) }));
+    const total = links.reduce((sum, link) => sum + link.weight, 0);
+    links.forEach(link => { link.weight /= total || 1; });
+    return [group, links];
+  }));
+  function authorSurface(shape) {
+    const authored = normalGroups.map(vertices => faceDelta(points[vertices[0]], lipSides[vertices[0]], shape));
+    const solved = authored.map(delta => delta.clone());
+    // Solve displacement on the connected skin, with fixed lip landmarks,
+    // fixed nose/outer brush, and the authored lower lip. This avoids folding
+    // skinny triangles between a moving lip and a pinned nose. All of this is
+    // done once at model creation; playback still only writes three weights.
+    for (let iteration = 0; iteration < 240; iteration++) {
+      let change = 0;
+      for (const group of free) {
+        const average = new THREE.Vector3();
+        for (const link of neighborWeights.get(group)) average.addScaledVector(solved[link.group], link.weight);
+        average.multiplyScalar(0.985).addScaledVector(authored[group], 0.015);
+        change = Math.max(change, average.distanceToSquared(solved[group])); solved[group].copy(average);
+      }
+      if (change < 1e-17) break;
+    }
+    return solved;
+  }
+  function surfaceNormals(positions) {
+    const result = normalGroups.map(() => new THREE.Vector3()), a = new THREE.Vector3(), b = new THREE.Vector3(), c = new THREE.Vector3();
+    const index = geometry.index.array;
+    for (let i = 0; i < index.length; i += 3) {
+      const ia = index[i], ib = index[i + 1], ic = index[i + 2];
+      a.fromArray(positions, ia * 3); b.fromArray(positions, ib * 3); c.fromArray(positions, ic * 3);
+      const n = b.sub(a).cross(c.sub(a)); result[vertexGroup[ia]].add(n); result[vertexGroup[ib]].add(n); result[vertexGroup[ic]].add(n);
+    }
+    return result.map(n => n.normalize());
+  }
+  const restNormals = surfaceNormals(position.array);
   for (const [shape, name] of targets.entries()) {
-    const offsets = new Float32Array(position.count * 3);
-    for (let i = 0; i < points.length; i++) {
-      const p = points[i];
-      const front = smoothstep(p.z, 0.065, 0.105);
-      const side = 1 - smoothstep(Math.abs(p.x), 0.045, 0.095);
-      const lowerFace = smoothstep(p.y, 0.655, 0.695) * (1 - smoothstep(p.y, 0.735, 0.758));
-      const lip = 1 - smoothstep(Math.abs(p.y - 0.733), 0.012, 0.034);
-      const weight = front * side * (shape === 0 ? lowerFace : lip);
-      if (weight < 1e-7) continue;
-      activeVertices.add(i);
-      const delta = shape === 0 ? new THREE.Vector3(0, -0.009 * weight, -0.0015 * weight)
-        : new THREE.Vector3(p.x * (shape === 1 ? 0.10 : -0.16) * weight, 0, shape === 2 ? 0.002 * weight : 0);
-      delta.applyMatrix3(fromFace).toArray(offsets, i * 3);
+    const offsets = new Float32Array(position.count * 3), deltas = [], surface = authorSurface(shape);
+    for (let i = 0; i < position.count; i++) {
+      let delta;
+      if (i < outerVertices) delta = surface[vertexGroup[i]].clone();
+      else if (motion[i]?.toothAnchor) delta = faceDelta(motion[i].toothAnchor, 1, shape);
+      else if (motion[i]?.source !== undefined) delta = deltas[motion[i].source].clone().multiplyScalar(motion[i].follow);
+      else delta = new THREE.Vector3();
+      deltas.push(delta);
+      if (delta.lengthSq() > 1e-16) activeVertices.add(i);
+      delta.clone().applyMatrix3(fromFaceDirection).toArray(offsets, i * 3);
+    }
+    const posed = Float32Array.from(position.array, (value, i) => value + offsets[i]);
+    const targetNormals = surfaceNormals(posed), normalOffsets = new Float32Array(offsets.length);
+    const rotations = restNormals.map((n, i) => n.lengthSq() && targetNormals[i].lengthSq() ? new THREE.Quaternion().setFromUnitVectors(n, targetNormals[i]) : new THREE.Quaternion());
+    for (let i = 0; i < position.count; i++) {
+      if (i < outerVertices && (points[i].y >= 0.749 || !activeVertices.has(i))) continue;
+      const original = new THREE.Vector3().fromBufferAttribute(normal, i);
+      original.clone().applyQuaternion(rotations[vertexGroup[i]]).sub(original).toArray(normalOffsets, i * 3);
     }
     const attribute = new THREE.BufferAttribute(offsets, 3); attribute.name = name;
-    const sculpt = rest.clone();
-    const sculptPosition = sculpt.attributes.position;
-    for (let i = 0; i < offsets.length; i++) sculptPosition.array[i] += offsets[i];
-    sculpt.computeVertexNormals();
-    const normalOffsets = new Float32Array(offsets.length);
-    for (let i = 0; i < offsets.length; i++) normalOffsets[i] = sculpt.attributes.normal.array[i] - rest.attributes.normal.array[i];
     const normalAttribute = new THREE.BufferAttribute(normalOffsets, 3); normalAttribute.name = name;
-    (geometry.morphAttributes.position ??= []).push(attribute);
-    (geometry.morphAttributes.normal ??= []).push(normalAttribute);
-    sculpt.dispose();
+    (geometry.morphAttributes.position ??= []).push(attribute); (geometry.morphAttributes.normal ??= []).push(normalAttribute);
   }
-  rest.dispose();
   geometry.morphTargetsRelative = true;
-  const previousInfluences = mesh.morphTargetInfluences?.slice() ?? [];
-  mesh.updateMorphTargets();
+  const previousInfluences = mesh.morphTargetInfluences?.slice() ?? []; mesh.updateMorphTargets();
   previousInfluences.forEach((value, i) => { mesh.morphTargetInfluences[i] = value; });
-
   const state = { open: 0, spread: 0, round: 0 };
-  const mouth = { value: new THREE.Vector3() };
-  const faceMatrix = { value: toFace };
-  const previousCompile = material.onBeforeCompile;
-  const previousKey = material.customProgramCacheKey();
-  material.onBeforeCompile = function (shader, renderer) {
-    previousCompile.call(this, shader, renderer);
-    shader.uniforms.speechMouth = mouth;
-    shader.uniforms.speechFaceMatrix = faceMatrix;
-    shader.vertexShader = 'uniform mat4 speechFaceMatrix; varying vec3 speechFacePoint;\n' + shader.vertexShader;
-    shader.vertexShader = shader.vertexShader.replace('#include <begin_vertex>',
-      '#include <begin_vertex>\nspeechFacePoint = (speechFaceMatrix * vec4(position, 1.0)).xyz;');
-    shader.fragmentShader = 'uniform vec3 speechMouth; varying vec3 speechFacePoint;\n' + shader.fragmentShader;
-    shader.fragmentShader = shader.fragmentShader.replace('#include <map_fragment>', `
-      #include <map_fragment>
-      #ifdef USE_MAP
-        float speechOpen = speechMouth.x;
-        if (speechOpen > 0.0001 && speechFacePoint.z > 0.085) {
-          float sx = speechFacePoint.x;
-          float sy = speechFacePoint.y;
-          float smileY = 0.7325 + 5.2 * sx * sx;
-          float erase = (1.0 - smoothstep(0.038, 0.045, abs(sx)))
-            * (1.0 - smoothstep(0.003, 0.007, abs(sy - smileY)));
-          float presence = smoothstep(0.0, 0.10, speechOpen);
-          // Sample unpainted skin just below the smile in the original atlas.
-          vec3 skin = texture2D(map, vMapUv + vec2(0.0, -0.013)).rgb;
-          diffuseColor.rgb = mix(diffuseColor.rgb, skin, erase * presence);
-          float width = mix(0.036 + 0.007 * speechMouth.y, 0.021, speechMouth.z);
-          float height = 0.001 + 0.016 * speechOpen;
-          float mx = sx / width;
-          float my = (sy - 0.7325 - 0.004 * mx * mx + 0.004 * speechOpen) / height;
-          float distanceToLip = pow(abs(mx), 2.6) + my * my;
-          float edge = max(0.045, fwidth(distanceToLip));
-          float inside = 1.0 - smoothstep(1.0 - edge, 1.0 + edge, distanceToLip);
-          float rim = (1.0 - smoothstep(1.05, 1.40, distanceToLip)) * presence;
-          diffuseColor.rgb = mix(diffuseColor.rgb, skin * vec3(0.76, 0.50, 0.38), rim * 0.36);
-          vec3 cavity = mix(vec3(0.025, 0.005, 0.004), vec3(0.10, 0.018, 0.014), clamp(-my * 0.45 + 0.3, 0.0, 1.0));
-          float teeth = smoothstep(0.34, 0.42, my) * (1.0 - smoothstep(0.76, 0.90, my))
-            * (1.0 - smoothstep(0.72, 0.90, abs(mx))) * (1.0 - speechMouth.z * 0.8);
-          cavity = mix(cavity, vec3(0.89, 0.81, 0.65), teeth);
-          float tongue = (1.0 - smoothstep(0.60, 0.77, abs(mx)))
-            * (1.0 - smoothstep(-0.50, -0.28, my)) * smoothstep(-0.95, -0.75, my);
-          cavity = mix(cavity, vec3(0.38, 0.075, 0.065), tongue * speechOpen * 0.85);
-          diffuseColor.rgb = mix(diffuseColor.rgb, cavity, inside * presence);
-        }
-      #endif
-    `);
-  };
-  material.customProgramCacheKey = () => `${previousKey}:speech-face-v1`;
-  material.needsUpdate = true;
-
+  let interiorVisible = true;
   function setPose({ open = 0, spread = 0, round = 0 } = {}) {
     state.open = finite(open); state.spread = finite(spread); state.round = finite(round);
-    mouth.value.set(state.open, state.spread, state.round);
     mesh.morphTargetInfluences[firstTarget] = state.open;
     mesh.morphTargetInfluences[firstTarget + 1] = state.spread * state.open;
     mesh.morphTargetInfluences[firstTarget + 2] = state.round * state.open;
+    const visible = state.open > 0.0001;
+    if (visible !== interiorVisible) {
+      interiorVisible = visible;
+      innerMaterials.forEach(material => { material.visible = visible; });
+    }
   }
-  const anchor = bones.Head.worldToLocal(new THREE.Vector3(0, 0.80, 0.07).applyMatrix4(root.matrixWorld));
-  const report = { technique: 'surface mouth with three relative face shapes', addedVertices: 0, addedTriangles: 0,
-    vertices: position.count, triangles: geometry.index.count / 3, firstTarget, targets, affectedVertices: activeVertices.size };
+  setPose();
+  const anchor = bones.Head.worldToLocal(new THREE.Vector3(centerX, 0.80, 0.07).applyMatrix4(root.matrixWorld));
+  const report = { technique: 'split smile edges with recessed lining and upper teeth', ...topology.report,
+    vertices: position.count, triangles: geometry.index.count / 3, firstTarget, targets, affectedVertices: activeVertices.size, noseLockHeight: 0.749 };
   root.userData.speechFace = report;
-  const previousToJSON = root.toJSON;
-  root.toJSON = function (meta) {
-    if (state.open < 0.0001 || !material.map) return previousToJSON.call(this, meta);
-    const originalMap = material.map;
-    const snapshot = bakeSpeechTexture(originalMap, geometry, points, state);
-    material.map = snapshot;
-    try { return previousToJSON.call(this, meta); }
-    finally { material.map = originalMap; snapshot.dispose(); }
-  };
   return { setPose, reset: () => setPose(), get state() { return { ...state }; }, report,
     getWorldAnchor: (target = new THREE.Vector3()) => bones.Head.localToWorld(target.copy(anchor)),
+    setSurface(mode) { innerMaterials.forEach(material => { material.wireframe = mode === 'wire'; }); },
+    dispose() { innerMaterials.forEach(material => material.dispose()); },
   };
 }

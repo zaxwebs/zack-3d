@@ -16,17 +16,28 @@ assert.deepEqual(correction.repairs.map(repair => repair.side).sort(), ['L', 'R'
 assert(correction.maxDisplacement > 0 && correction.maxDisplacement < 0.00025);
 const repairedVertices = new Set(correction.repairs.flatMap(repair => repair.vertices));
 assert.equal(repairedVertices.size, 8);
+// Verify this repair's scope in isolation. The complete character also has
+// sole caps, clothing repairs, and a deliberately split mouth now.
+const handGeometry = new THREE.BufferGeometry();
+for (const name of ['position', 'normal', 'uv', 'skinIndex', 'skinWeight', 'index']) {
+  const layout = manifest.arrays[name], constructors = { Float32Array, Uint16Array, Uint32Array, Uint8Array };
+  const original = new constructors[layout.type](buffer, layout.byteOffset, layout.count * layout.itemSize);
+  const values = layout.normalized ? Float32Array.from(original, value => value / 255) : original.slice();
+  const attribute = new THREE.BufferAttribute(values, layout.itemSize);
+  if (name === 'index') handGeometry.setIndex(attribute); else handGeometry.setAttribute(name, attribute);
+}
+assert.equal(repairHandSeams(handGeometry, model.skeleton, model.bones).slits, 2);
 for (const name of ['position', 'normal', 'uv', 'index']) {
   const layout = manifest.arrays[name];
   const constructors = { Float32Array, Uint16Array, Uint32Array };
   const original = new constructors[layout.type](buffer, layout.byteOffset, layout.count * layout.itemSize);
-  const current = name === 'index' ? model.geometry.index.array : model.geometry.attributes[name].array;
+  const current = name === 'index' ? handGeometry.index.array : handGeometry.attributes[name].array;
   original.forEach((value, index) => {
     if (['position', 'normal'].includes(name) && repairedVertices.has(Math.floor(index / layout.itemSize))) return;
     assert.equal(current[index], value, `${name} changed outside the hand repair`);
   });
 }
-function boundaryEdgeCount(positions) {
+function boundaryEdgeCount(positions, indices) {
   const canonical = [];
   const groups = new Map();
   for (let vertex = 0; vertex < positions.length / 3; vertex++) {
@@ -35,7 +46,6 @@ function boundaryEdgeCount(positions) {
     canonical.push(groups.get(key));
   }
   const edges = new Map();
-  const indices = model.geometry.index.array;
   for (let offset = 0; offset < indices.length; offset += 3) {
     for (let corner = 0; corner < 3; corner++) {
       const ends = [canonical[indices[offset + corner]], canonical[indices[offset + (corner + 1) % 3]]].sort((left, right) => left - right);
@@ -47,7 +57,8 @@ function boundaryEdgeCount(positions) {
 }
 const positionLayout = manifest.arrays.position;
 const originalPositions = new Float32Array(buffer, positionLayout.byteOffset, positionLayout.count * 3);
-assert.equal(boundaryEdgeCount(originalPositions) - boundaryEdgeCount(model.geometry.attributes.position.array), 8);
+assert.equal(boundaryEdgeCount(originalPositions, handGeometry.index.array) - boundaryEdgeCount(handGeometry.attributes.position.array, handGeometry.index.array), 8);
+handGeometry.dispose();
 const correctedPositions = model.geometry.attributes.position.array.slice();
 const correctedNormals = model.geometry.attributes.normal.array.slice();
 for (const name of Object.keys(POSES)) {

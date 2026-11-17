@@ -2,7 +2,7 @@
 
 This project reconstructs `Zack 3D V2.glb` as native Three.js `BufferGeometry`, a `SkinnedMesh`, and a named skeleton. The model module does not load the GLB. Extracted arrays, rig metadata, and the original texture live in `public/model/`.
 
-This is a geometry conversion, not a newly authored parametric character. It preserves the source topology and UV seams, with a small runtime hand-seam repair described below. Hair, clothing, eyes, and body are part of one textured mesh; they are not separate editable objects.
+This is a geometry conversion, not a newly authored parametric character. It retains the source surface and UV seams, with local hand/clothing repairs, sole caps, and a split along the existing smile for speech. Hair, clothing, eyes, and body remain part of one mesh. The mouth lining, upper tooth band, and tongue use separate material groups on that same skinned mesh.
 
 ## Preview
 
@@ -67,7 +67,9 @@ The rig audit also removes thigh influence from the hoodie above the hem, with a
 
 The **Live speech** section adds local microphone-driven mouth motion. Select **Face close-up**, then **Preview speech** to inspect the open, wide, and rounded shapes without microphone access. **Start mic** requests browser permission and follows your voice; **Stop mic** releases capture and closes the mouth. Select a microphone before starting, increase sensitivity for quiet speech, and raise the noise gate to reject room noise. Capture requires localhost or HTTPS. Permission denial, interruption, and disconnected devices are reported in the panel.
 
-Speech uses three relative face shapes and a procedural surface mouth on the original sealed face. It adds no vertices, triangles, or bones. This is a stylized approximation driven by loudness and broad frequency bands, rather than phoneme recognition or full facial capture. It runs alongside body mocap and head turns. The default closed smile returns exactly at rest. Audio stays in the browser; it is not recorded or uploaded. The JSON exporter bakes the current painted mouth and preserves the current face shapes as a portable still pose.
+Speech now separates the actual lip mesh along 12 existing smile edges. A recessed lining, curved upper tooth band, and tongue sit behind the opening. It adds 166 vertex records and 234 interior triangles, with no extra outer-face triangles or bones. Three relative shapes control jaw opening, width, and rounding. The nose is pinned; a load-time solve smooths the upper lip transition, while the lower lip and chin follow their own jaw motion. Teeth sit into the upper lip and follow its width without leaving the earlier dark strip above them.
+
+This remains a stylized approximation driven by loudness and broad frequency bands, rather than phoneme recognition or full facial capture. It runs alongside body mocap and head turns. The original closed smile returns at rest, when the occluded interior material groups are culled. The model takes one draw call while silent and four while speaking. Runtime updates change three morph weights; there is no runtime cutting, smoothing solve, or full-texture upload. Audio stays in the browser; it is not recorded or uploaded. JSON exports retain the actual opening, interior materials, and current face shapes as ordinary Three.js geometry; no speech shader or texture baking is required.
 
 ```js
 import { SpeechAudio } from './SpeechAudio.js';
@@ -80,7 +82,7 @@ speech.update(deltaSeconds);
 speech.stop();
 ```
 
-For manual posing, use `zack.speechFace.setPose({ open: 0.7, spread: 0.2, round: 0.6 })`, with each value between 0 and 1; `zack.speechFace.reset()` restores rest. The material overlay appears in Textured mode; Clay and Wireframe show only the small geometry deformation. Run `npm run test:speech` with the dev server running. See [the research and implementation notes](docs/LIP_SYNC_RESEARCH.md) for historical references, tradeoffs, signal timing, and verification details. Synthetic microphone tests do not substitute for checking your physical input and browser permission.
+For manual posing, use `zack.speechFace.setPose({ open: 0.7, spread: 0.2, round: 0.6 })`, with each value between 0 and 1; `zack.speechFace.reset()` restores rest. Textured, Clay, and Wireframe all show the actual lip opening. Run `npm run test:speech` with the dev server running. It includes isolated topology checks and 45 shape combinations, nose protection, tooth clearance, lining continuity, closed-mouth occlusion, microphone lifecycle, mocap layering, and native exports. See [the research and implementation notes](docs/LIP_SYNC_RESEARCH.md) for sources and limitations. Synthetic microphone tests do not substitute for checking your physical input and browser permission.
 
 ## Use in another Three.js project
 
@@ -119,9 +121,9 @@ The lossless WebP texture repairs the drawstring roots using mesh geometry and r
 
 ## Source inspection and verification
 
-The source mesh has a narrow open slit at the base of each thumb. `repairHandSeams()` detects only four-edge hand openings with a sub-0.001-unit diagonal and stitches their near-coincident corners. It adjusts eight existing vertex records by at most 0.000245 model units, sharing position, normal, and normalized skin weights across the joined corners while preserving UV coordinates, vertex count, and triangle indices. A separate load-time repair removes one isolated sliver triangle near the head that made a welded edge non-manifold; the runtime mesh has 10,711 triangles. Larger openings, clothing boundaries, and the source files are left unchanged. `root.userData.handSeamCorrection` and `root.userData.nonManifoldSliverCorrection` record the repairs. Reset retains them, and `node scripts/verify-hand-seams.mjs` checks hand closure in every preset.
+The source mesh has a narrow open slit at the base of each thumb. `repairHandSeams()` detects only four-edge hand openings with a sub-0.001-unit diagonal and stitches their near-coincident corners. It adjusts eight existing vertex records by at most 0.000245 model units, sharing position, normal, and normalized skin weights across the joined corners while preserving UV coordinates, vertex count, and triangle indices. A separate load-time repair removes one isolated sliver triangle near the head that made a welded edge non-manifold. Sole caps, local clothing repairs, and the speech opening are separate passes; the complete runtime has 10,965 triangles. Source files remain unchanged. `root.userData.handSeamCorrection` and `root.userData.nonManifoldSliverCorrection` record the hand/sliver repairs. Reset retains them, and `node scripts/verify-hand-seams.mjs` checks hand closure in every preset.
 
-- 1 skinned mesh, 22,862 vertices, 10,712 source triangles (10,711 at runtime after repair)
+- 1 skinned mesh, 22,862 source vertex records and 10,712 source triangles; 23,052 records and 10,965 triangles after the documented runtime passes
 - 78 source bones, plus four runtime elbow helpers; four skin influences per vertex
 - 4096 × 4096 base-color texture
 - No embedded Zack animation clips or degenerate triangles

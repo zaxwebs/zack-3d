@@ -27,14 +27,15 @@ try {
     const model = window.zack;
     model.root.updateMatrixWorld(true);
     const handSeamCorrection = model.root.userData.handSeamCorrection;
-    const repairedVertices = new Set(handSeamCorrection.repairs.flatMap(repair => repair.vertices));
+    const repairedVertices = new Set([handSeamCorrection, model.root.userData.clothingSeamCorrection,
+      model.root.userData.shoeLaceGapCorrection].flatMap(correction => correction.repairs.flatMap(repair => repair.vertices)));
     const attributes = {};
     const unrepairedAttributes = {};
     for (const name of ['position', 'normal', 'uv', 'skinIndex', 'skinWeight']) {
       const a = source.geometry.attributes[name].array;
       const b = model.geometry.attributes[name].array;
-      attributes[name] = a.length === b.length && a.every((v, i) => v === b[i]);
-      unrepairedAttributes[name] = a.length === b.length && a.every((value, index) =>
+      attributes[name] = b.length >= a.length && a.every((v, i) => v === b[i]);
+      unrepairedAttributes[name] = b.length >= a.length && a.every((value, index) =>
         repairedVertices.has(Math.floor(index / source.geometry.attributes[name].itemSize)) || value === b[index]);
     }
     const packedManifest = await fetch('/model/manifest.json').then(response => response.json());
@@ -67,13 +68,26 @@ try {
     const a = new THREE.Vector3(), b = new THREE.Vector3();
     let maxWorldVertexError = 0;
     let maxRepairedWorldVertexError = 0;
-    for (let i = 0; i < model.geometry.attributes.position.count; i++) {
+    // Added sole caps, split lip records, and mouth interiors have no source
+    // GLB counterpart. Compare every source record, then validate the additions.
+    for (let i = 0; i < source.geometry.attributes.position.count; i++) {
       source.getVertexPosition(i, a).applyMatrix4(source.matrixWorld);
       model.mesh.getVertexPosition(i, b).applyMatrix4(model.mesh.matrixWorld);
       if (repairedVertices.has(i)) maxRepairedWorldVertexError = Math.max(maxRepairedWorldVertexError, a.distanceTo(b));
       else maxWorldVertexError = Math.max(maxWorldVertexError, a.distanceTo(b));
     }
-    const sourceIndex = source.geometry.index.array;
+    const expectedGeometry = source.geometry.clone();
+    const [{ repairHandSeams }, { repairNonManifoldSliver }, { repairShoeSoleHoles }, { repairShoeLaceGaps }, { repairClothingSeams }] = await Promise.all([
+      import('/src/repairHandSeams.js'), import('/src/repairNonManifoldSliver.js'), import('/src/repairShoeSoleHoles.js'), import('/src/repairShoeLaceGaps.js'), import('/src/repairClothingSeams.js')]);
+    const sourceBones = Object.fromEntries(source.skeleton.bones.map(bone => [bone.name, bone]));
+    repairHandSeams(expectedGeometry, source.skeleton, sourceBones); repairNonManifoldSliver(expectedGeometry);
+    repairShoeSoleHoles(expectedGeometry); repairShoeLaceGaps(expectedGeometry); repairClothingSeams(expectedGeometry);
+    const copySources = new Map(model.speechFace.report.splitRecords.map(({ source, copy }) => [copy, source]));
+    const expectedIndex = expectedGeometry.index.array;
+    const indexEqual = expectedIndex.every((value, i) => value === (copySources.get(model.geometry.index.array[i]) ?? model.geometry.index.array[i]));
+    const additionsMatch = model.geometry.attributes.position.count === expectedGeometry.attributes.position.count + model.speechFace.report.addedVertices
+      && model.geometry.index.count === expectedIndex.length + model.speechFace.report.addedTriangles * 3;
+    expectedGeometry.dispose();
     const shoulderPivots = {};
     for (const side of ['L', 'R']) {
       const before = source.skeleton.bones.find(bone => bone.name === `${side}_Upperarm`).getWorldPosition(new THREE.Vector3());
@@ -83,7 +97,7 @@ try {
       shoulderPivots[side] = { offset: after.sub(before).toArray(), elbowRestError: elbowBefore.distanceTo(elbowAfter) };
     }
     return { attributes, unrepairedAttributes, handSeamCorrection, maxRepairedWorldVertexError,
-      indexEqual: sourceIndex.every((v, i) => v === model.geometry.index.array[i]),
+      indexEqual, additionsMatch,
       packedJointIndicesExact,
       packedTypes: { index: packedManifest.arrays.index.type,
         skinIndex: packedManifest.arrays.skinIndex.type,
@@ -103,7 +117,7 @@ try {
   }
   assert(report.attributes.uv);
   assert.equal(report.handSeamCorrection.slits, 2);
-  assert(report.maxRepairedWorldVertexError < 0.00025);
+  assert(report.maxRepairedWorldVertexError < 0.0004);
   assert.equal(report.attributes.skinWeight, false, 'Chest skin weights should differ from the source auto-rig');
   assert(report.packedJointIndicesExact, 'Packed joint indices must match the source');
   assert.deepEqual(report.packedTypes, { index: 'Uint16Array', skinIndex: 'Uint8Array',
@@ -111,7 +125,8 @@ try {
   assert(report.packedWeightSumsExact, 'Packed weights must sum to 255 per vertex');
   assert(report.maxWeightQuantizationError < 1 / 255,
     `Skin weight quantization error too large: ${report.maxWeightQuantizationError}`);
-  assert(report.indexEqual);
+  assert(report.indexEqual, 'Original triangles survive the documented repairs and lip split');
+  assert(report.additionsMatch, 'Only the documented sole caps and mouth geometry are added');
   assert(report.maxWorldVertexError < 1e-6, `World vertex mismatch: ${report.maxWorldVertexError}`);
   for (const side of ['L', 'R']) {
     const result = report.shoulderPivots[side];

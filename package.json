@@ -10,7 +10,7 @@
     "test:shoulders": "node scripts/verify-shoulder-correctives.mjs && node scripts/verify-shoulder-correctives-viewer.mjs",
     "test:soft-arms": "node scripts/verify-arm-softening.mjs && node scripts/verify-shovel.mjs",
     "test:run": "node scripts/verify-run-loop.mjs",
-    "test:speech": "node scripts/verify-speech.mjs && node scripts/verify-speech-viewer.mjs",
+    "test:speech": "node scripts/verify-speech.mjs && node scripts/verify-mouth.mjs && node scripts/verify-speech-viewer.mjs",
     "audit:shoulders": "node scripts/audit-shoulders.mjs",
     "audit:joints": "node scripts/audit-joints.mjs",
     "dev": "vite --host 127.0.0.1",

@@ -36,7 +36,8 @@ const base = Object.fromEntries(Object.entries(geometry.attributes).map(([name, 
 const indices = geometry.index.array.slice(), previousTargets = mesh.morphTargetInfluences.slice(0, speechFace.report.firstTarget);
 assert.equal(geometry.attributes.position.count, speechFace.report.vertices);
 assert.equal(geometry.index.count / 3, speechFace.report.triangles);
-assert.equal(speechFace.report.addedVertices, 0); assert.equal(speechFace.report.addedTriangles, 0);
+assert.equal(speechFace.report.addedOuterTriangles, 0);
+assert(speechFace.report.addedVertices < 250 && speechFace.report.addedTriangles < 300);
 const restPoints = Array.from({ length: base.position.length / 3 }, (_, i) => mesh.getVertexPosition(i, new THREE.Vector3()).applyMatrix4(mesh.matrixWorld));
 let moved = 0, maxDisplacement = 0;
 speechFace.setPose({ open: 1, spread: 0.6, round: 0.7 });
@@ -48,7 +49,7 @@ for (let i = 0; i < restPoints.length; i++) {
   const p = restPoints[i];
   assert(p.y > 0.65 && p.y < 0.77 && p.z > 0.06 && Math.abs(p.x) < 0.10, `Speech only deforms the lower face: ${i} ${p.toArray()} ${distance}`);
 }
-assert(moved > 50 && maxDisplacement < 0.012);
+assert(moved > 50 && maxDisplacement < 0.030);
 for (const [name, values] of Object.entries(base)) assert.deepEqual(geometry.attributes[name].array, values, `${name} stays unchanged`);
 assert.deepEqual(geometry.index.array, indices);
 assert.deepEqual(mesh.morphTargetInfluences.slice(0, speechFace.report.firstTarget), previousTargets);
@@ -59,14 +60,18 @@ assert.deepEqual(speechFace.state, { open: 0, spread: 0, round: 0 });
 model.reset();
 assert.deepEqual(speechFace.state, { open: 0, spread: 0, round: 0 });
 const seamDeltas = new Map();
+const lowerCopies = new Set(speechFace.report.splitRecords.map(record => record.copy));
 for (const attribute of geometry.morphAttributes.position.slice(speechFace.report.firstTarget)) {
   seamDeltas.clear();
-  for (let i = 0; i < restPoints.length; i++) {
-    const key = base.position.slice(i * 3, i * 3 + 3).join(',');
+  for (let i = 0; i < speechFace.report.outerVertices; i++) {
+    const key = `${base.position.slice(i * 3, i * 3 + 3).join(',')}:${lowerCopies.has(i) ? 'lower' : 'upper'}`;
     const delta = [...attribute.array.slice(i * 3, i * 3 + 3)];
     if (seamDeltas.has(key)) assert.deepEqual(delta, seamDeltas.get(key), 'UV duplicates move together');
     else seamDeltas.set(key, delta);
   }
 }
-console.log(JSON.stringify({ passed: true, movedVertices: moved, maxDisplacement, ...speechFace.report }, null, 2));
+console.log(JSON.stringify({ passed: true, movedVertices: moved, maxDisplacement, technique: speechFace.report.technique,
+  vertices: speechFace.report.vertices, triangles: speechFace.report.triangles, addedVertices: speechFace.report.addedVertices,
+  addedTriangles: speechFace.report.addedTriangles, addedOuterTriangles: speechFace.report.addedOuterTriangles,
+  targets: speechFace.report.targets }, null, 2));
 model.dispose();

@@ -85,8 +85,16 @@ try {
   await page.evaluate(() => studio.renderer.setAnimationLoop(null));
   for (const [name, pose] of Object.entries({ rest: {}, open: { open: 0.8, spread: 0.3 }, wide: { open: 0.5, spread: 1 }, rounded: { open: 0.7, round: 1 } })) {
     await page.evaluate(pose => { zack.speechFace.setPose(pose); studio.renderer.render(studio.scene, studio.camera); }, pose);
+    const calls = await page.evaluate(() => studio.renderer.info.render.calls);
+    assert.equal(calls, name === 'rest' ? 1 : 4, 'The closed mouth culls all interior draw calls');
     await page.screenshot({ path: `${output}/${name}.png` });
   }
+  for (const [name, mode, x] of [['clay', 'clay', 0], ['wire', 'wire', 0], ['three-quarter', 'textured', 0.43], ['profile', 'textured', 0.65]]) {
+    await page.selectOption('#surface', mode);
+    await page.evaluate(x => { zack.speechFace.setPose({ open: 0.75, round: 0.6 }); studio.camera.position.set(x, 0.815, x ? 0.61 : 0.81); studio.controls.update(); studio.renderer.render(studio.scene, studio.camera); }, x);
+    await page.screenshot({ path: `${output}/${name}.png` });
+  }
+  await page.click('#speechFocus');
   await page.evaluate(() => { zackRig.setHeadTurn(25); zack.speechFace.setPose({ open: 0.6, round: 0.8 }); studio.renderer.render(studio.scene, studio.camera); });
   await page.screenshot({ path: `${output}/head-turn.png` });
   await page.waitForFunction(() => studio.mocapController.motions.size > 0);
@@ -100,7 +108,7 @@ try {
   });
   assert(report.mocap.intact);
 
-  // Exported snapshots use a standard texture and relative shapes, no shader.
+  // The opening, teeth, lining, and shapes export as ordinary native geometry.
   report.export = await page.evaluate(async () => {
     const T = await import('/node_modules/three/build/three.module.js');
     zack.speechFace.setPose({ open: 0.8, spread: 0.3 }); zack.armSoftening.update();
@@ -113,11 +121,12 @@ try {
       zack.mesh.getVertexPosition(i, new T.Vector3()).distanceTo(mesh.getVertexPosition(i, new T.Vector3())));
     window.speechSnapshot = snapshot; studio.scene.add(snapshot); zack.root.visible = false;
     studio.renderer.render(studio.scene, studio.camera);
+    const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
     return { maxError, restored: zack.mesh.geometry === geometry && zack.mesh.morphTargetInfluences === influences && zack.material.map === map,
-      bakedMap: mesh.material.map.uuid !== map.uuid, triangles: mesh.geometry.index.count / 3 };
+      nativeMap: materials[0].map.uuid === map.uuid, materials: materials.map(material => material.name), groups: mesh.geometry.groups.length, triangles: mesh.geometry.index.count / 3 };
   });
   await page.screenshot({ path: `${output}/export.png` });
-  assert(report.export.restored && report.export.bakedMap && report.export.maxError < 1e-7);
+  assert(report.export.restored && report.export.nativeMap && report.export.groups === 4 && report.export.maxError < 1e-7);
   await page.evaluate(() => { studio.scene.remove(speechSnapshot); zack.root.visible = true; zack.speechFace.reset(); });
   await page.selectOption('#surface', 'clay');
   await page.evaluate(() => { zack.speechFace.setPose({ open: 0.6 }); studio.renderer.render(studio.scene, studio.camera); });
