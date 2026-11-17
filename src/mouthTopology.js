@@ -1,7 +1,12 @@
 import * as THREE from 'three';
+import { createUpperDentalArch } from './upperDentalArch.js';
 
-// Authored landmarks along the existing smile, checked against welded adjacency.
-const SMILE_PATH = [799, 802, 812, 8776, 8869, 8874, 8925, 15912, 16549, 16566, 2893, 2885, 2908];
+// The recessed separation AFTER the upper-lip roll. The higher outer ridge
+// must remain on the upper face rather than travel downward with the jaw.
+// Keep the established corner geometry. Its painted tips are registered with
+// a separate, local UV correction rather than extending the corner cut.
+const SMILE_PATH = [799, 802, 806, 8857, 8856, 8880, 8918, 16526, 16542, 16572, 2883, 2885, 2908];
+const UPPER_LIP_RIDGE = [812, 8776, 8869, 8874, 8925, 15912, 16549, 16566, 2893];
 const edgeKey = (a, b) => a < b ? `${a},${b}` : `${b},${a}`;
 
 /** Split existing smile edges once, then construct a compact inner mouth. */
@@ -83,6 +88,8 @@ export function createMouthTopology({ root, mesh, geometry, material, skeleton, 
     upper.push(index[f * 3 + faces[f].indexOf(group)]); lower.push(copies.values().next().value);
   });
   const outerVertices = facePoints.length, headIndex = skeleton.bones.indexOf(bones.Head);
+  const colorPatches = [];
+  const tint = (vertex, color) => colorPatches.push({ vertex, color: new THREE.Color(color) });
   function addPoint(point, movement = null, source = null) {
     const vertex = facePoints.length, raw = point.clone().applyMatrix4(fromFace);
     for (const [name, attribute] of Object.entries(originalAttributes)) {
@@ -102,7 +109,10 @@ export function createMouthTopology({ root, mesh, geometry, material, skeleton, 
       const p = facePoints[b.source].clone(), t = (p.x - centerX) / halfWidth, profile = Math.max(0, 1 - t * t) ** 0.8;
       if (layer === 1) { p.z -= 0.002; p.y += b.side * 0.00045 * profile; }
       if (layer === 2) { p.x = centerX + (p.x - centerX) * 0.90; p.z -= 0.024; p.y += (b.side > 0 ? 0.003 : -0.018) * profile; }
-      row.push(addPoint(p, { source: b.source, follow: layer === 2 ? 0.45 : 1 }, layer === 0 ? b.source : null));
+      const vertex = addPoint(p, { source: b.source, follow: layer === 2 ? 0.45 : 1 }, layer === 0 ? b.source : null);
+      row.push(vertex);
+      const palette = b.side > 0 ? ['#9d6258', '#88434d', '#572a35'] : ['#ac6b63', '#9e5963', '#713b47'];
+      tint(vertex, palette[layer]);
     }
     ring.push(row);
   }
@@ -111,53 +121,57 @@ export function createMouthTopology({ root, mesh, geometry, material, skeleton, 
     index.push(a, c, b, b, c, d);
   }
   const middleLower = lower[Math.floor(lower.length / 2)], cap = addPoint(new THREE.Vector3(centerX, 0.719, 0.073), { source: middleLower, follow: 0.15 });
+  tint(cap, '#4b2532');
   for (let i = 0; i < boundary.length; i++) index.push(cap, ring[2][(i + 1) % boundary.length], ring[2][i]);
+  const cavityEnd = index.length;
+  const dentalArch = createUpperDentalArch({ centerX, halfWidth, sampleSeam, addPoint, tint });
+  const gumPalateStart = index.length;
+  index.push(...dentalArch.gumIndices);
   ranges.push({ start: liningStart, count: index.length - liningStart, materialIndex: 1 });
 
-  // A single curved upper tooth band is seated into the upper lip. Its top is
-  // hidden inside the face; teeth stay on the upper jaw as lips change width.
-  const teethStart = index.length, toothRows = [], columns = 11;
-  for (let i = 0; i < columns; i++) {
-    const x = centerX + halfWidth * 0.83 * (i / (columns - 1) * 2 - 1), p = sampleSeam(x);
-    toothRows.push([[0.0017, -0.0058], [0.0017, -0.0095], [-0.0052, -0.0095], [-0.0052, -0.0058]]
-      .map(([y, z]) => addPoint(new THREE.Vector3(x, p.y + y, p.z + z), { toothAnchor: p.clone() })));
-  }
-  for (let i = 0; i < columns - 1; i++) for (let k = 0; k < 4; k++) {
-    const j = (k + 1) % 4, a = toothRows[i][k], b = toothRows[i + 1][k], c = toothRows[i][j], d = toothRows[i + 1][j];
-    index.push(a, b, c, b, d, c);
-  }
-  index.push(toothRows[0][0], toothRows[0][1], toothRows[0][2], toothRows[0][0], toothRows[0][2], toothRows[0][3]);
-  const last = toothRows.at(-1); index.push(last[0], last[2], last[1], last[0], last[3], last[2]);
+  const teethStart = index.length;
+  index.push(...dentalArch.toothIndices);
   ranges.push({ start: teethStart, count: index.length - teethStart, materialIndex: 2 });
 
   const tongueStart = index.length, tongue = [];
-  for (let layer = 0; layer < 2; layer++) {
+  for (let layer = 0; layer < 3; layer++) {
     const row = [];
     for (let i = 0; i < 10; i++) {
-      const angle = i / 10 * Math.PI * 2;
-      row.push(addPoint(new THREE.Vector3(centerX + Math.cos(angle) * 0.022, layer ? 0.712 : 0.718, 0.108 + Math.sin(angle) * 0.009), { source: middleLower, follow: 0.35 }));
+      const angle = i / 10 * Math.PI * 2, radius = layer === 1 ? 0.55 : 1;
+      const y = [0.7205, 0.7232, 0.7145][layer];
+      const vertex = addPoint(new THREE.Vector3(centerX + Math.cos(angle) * 0.022 * radius, y, 0.110 + Math.sin(angle) * 0.009 * radius), { source: middleLower, follow: 0.35, tongue: true });
+      row.push(vertex); tint(vertex, ['#a96872', '#b9737e', '#7c444f'][layer]);
     }
     tongue.push(row);
   }
-  const tongueTop = addPoint(new THREE.Vector3(centerX, 0.721, 0.108), { source: middleLower, follow: 0.35 });
+  const tongueTop = addPoint(new THREE.Vector3(centerX, 0.7235, 0.110), { source: middleLower, follow: 0.35, tongue: true });
+  tint(tongueTop, '#bc7b83');
   for (let i = 0; i < 10; i++) {
     const j = (i + 1) % 10;
-    index.push(tongueTop, tongue[0][j], tongue[0][i], tongue[0][i], tongue[0][j], tongue[1][i], tongue[0][j], tongue[1][j], tongue[1][i]);
+    index.push(tongueTop, tongue[1][j], tongue[1][i],
+      tongue[0][i], tongue[1][i], tongue[0][j], tongue[0][j], tongue[1][i], tongue[1][j],
+      tongue[0][i], tongue[0][j], tongue[2][i], tongue[0][j], tongue[2][j], tongue[2][i]);
   }
   ranges.push({ start: tongueStart, count: index.length - tongueStart, materialIndex: 3 });
   for (const [name, attribute] of Object.entries(originalAttributes)) geometry.setAttribute(name, new THREE.BufferAttribute(new attribute.array.constructor(attributes[name]), attribute.itemSize, attribute.normalized));
+  // Colors are linear values, as expected by Three.js. White on the original
+  // character means only the materials with vertexColors enabled use them.
+  const colors = new Float32Array(facePoints.length * 3).fill(1);
+  colorPatches.forEach(({ vertex, color }) => color.toArray(colors, vertex * 3));
+  geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
   geometry.setIndex(index); geometry.clearGroups(); ranges.forEach(group => geometry.addGroup(group.start, group.count, group.materialIndex));
   const normalGeometry = geometry.clone(); normalGeometry.computeVertexNormals();
   for (let i = outerVertices; i < facePoints.length; i++) for (let k = 0; k < 3; k++) geometry.attributes.normal.array[i * 3 + k] = normalGeometry.attributes.normal.array[i * 3 + k];
   normalGeometry.dispose(); geometry.computeBoundingBox(); geometry.computeBoundingSphere();
-  const liningMaterial = new THREE.MeshBasicMaterial({ color: '#250a10', side: THREE.DoubleSide }); liningMaterial.name = 'MouthLining';
-  const teethMaterial = new THREE.MeshStandardMaterial({ color: '#fff0d8', roughness: 0.78 }); teethMaterial.name = 'UpperTeeth';
-  const tongueMaterial = new THREE.MeshStandardMaterial({ color: '#a95860', roughness: 1 }); tongueMaterial.name = 'Tongue';
+  const liningMaterial = new THREE.MeshBasicMaterial({ color: '#ffffff', vertexColors: true, side: THREE.DoubleSide }); liningMaterial.name = 'MouthLining';
+  const teethMaterial = new THREE.MeshStandardMaterial({ color: '#f4ead8', roughness: 0.68 }); teethMaterial.name = 'UpperTeeth';
+  const tongueMaterial = new THREE.MeshStandardMaterial({ color: '#ffffff', vertexColors: true, roughness: 0.96 }); tongueMaterial.name = 'Tongue';
   const innerMaterials = [liningMaterial, teethMaterial, tongueMaterial]; mesh.material = [material, ...innerMaterials];
   const report = { sourceVertices, sourceTriangles, outerVertices, seamVertices: seam.length, splitRecords,
     addedOuterTriangles: 0, addedVertices: facePoints.length - sourceVertices, addedTriangles: index.length / 3 - sourceTriangles,
     liningTriangles: ranges[1].count / 3, teethTriangles: ranges[2].count / 3, tongueTriangles: ranges[3].count / 3,
-    upperLip: upper, lowerLip: lower, innerRim: ring[0], materialGroups: ranges.length };
+    upperLip: upper, lowerLip: lower, upperLipRidge: UPPER_LIP_RIDGE, innerRim: ring[0], liningRings: ring, liningBack: cap,
+    ...dentalArch.report, cavityEnd, gumPalateStart, tongueTop, materialGroups: ranges.length };
   root.userData.mouthTopology = report;
   return { toFace, fromFace, facePoints, motion, lipSides, sampleSeam, seam, centerX, halfWidth, outerVertices, innerMaterials, report, upper, lower };
 }

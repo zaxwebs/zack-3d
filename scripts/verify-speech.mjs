@@ -37,7 +37,7 @@ const indices = geometry.index.array.slice(), previousTargets = mesh.morphTarget
 assert.equal(geometry.attributes.position.count, speechFace.report.vertices);
 assert.equal(geometry.index.count / 3, speechFace.report.triangles);
 assert.equal(speechFace.report.addedOuterTriangles, 0);
-assert(speechFace.report.addedVertices < 250 && speechFace.report.addedTriangles < 300);
+assert(speechFace.report.addedVertices <= 320 && speechFace.report.addedTriangles <= 520);
 const restPoints = Array.from({ length: base.position.length / 3 }, (_, i) => mesh.getVertexPosition(i, new THREE.Vector3()).applyMatrix4(mesh.matrixWorld));
 let moved = 0, maxDisplacement = 0;
 speechFace.setPose({ open: 1, spread: 0.6, round: 0.7 });

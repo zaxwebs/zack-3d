@@ -29,6 +29,7 @@ try {
     const handSeamCorrection = model.root.userData.handSeamCorrection;
     const repairedVertices = new Set([handSeamCorrection, model.root.userData.clothingSeamCorrection,
       model.root.userData.shoeLaceGapCorrection].flatMap(correction => correction.repairs.flatMap(repair => repair.vertices)));
+    const cornerUVVertices = new Set(model.root.userData.smileCornerUVAlignment.changedVertices);
     const attributes = {};
     const unrepairedAttributes = {};
     for (const name of ['position', 'normal', 'uv', 'skinIndex', 'skinWeight']) {
@@ -36,7 +37,7 @@ try {
       const b = model.geometry.attributes[name].array;
       attributes[name] = b.length >= a.length && a.every((v, i) => v === b[i]);
       unrepairedAttributes[name] = b.length >= a.length && a.every((value, index) =>
-        repairedVertices.has(Math.floor(index / source.geometry.attributes[name].itemSize)) || value === b[index]);
+        (name === 'uv' ? cornerUVVertices : repairedVertices).has(Math.floor(index / source.geometry.attributes[name].itemSize)) || value === b[index]);
     }
     const packedManifest = await fetch('/model/manifest.json').then(response => response.json());
     const packedBuffer = await fetch('/model/geometry.bin').then(response => response.arrayBuffer());
@@ -115,7 +116,7 @@ try {
     assert.equal(report.attributes[name], false, `Hand seam repair should adjust ${name}`);
     assert(report.unrepairedAttributes[name], `Unrepaired ${name} must match the source`);
   }
-  assert(report.attributes.uv);
+  assert(report.unrepairedAttributes.uv, 'UVs remain exact outside the smile-corner registration');
   assert.equal(report.handSeamCorrection.slits, 2);
   assert(report.maxRepairedWorldVertexError < 0.0004);
   assert.equal(report.attributes.skinWeight, false, 'Chest skin weights should differ from the source auto-rig');

@@ -94,9 +94,13 @@ export function createSpeechFace({ root, mesh, geometry, bones, mouthTopology: t
     for (let i = 0; i < position.count; i++) {
       let delta;
       if (i < outerVertices) delta = surface[vertexGroup[i]].clone();
-      else if (motion[i]?.toothAnchor) delta = faceDelta(motion[i].toothAnchor, 1, shape);
+      else if (motion[i]?.toothAnchor) delta = faceDelta(motion[i].toothAnchor, 1, shape).multiplyScalar(motion[i].toothFollow);
       else if (motion[i]?.source !== undefined) delta = deltas[motion[i].source].clone().multiplyScalar(motion[i].follow);
       else delta = new THREE.Vector3();
+      if (motion[i]?.tongue) {
+        if (shape === 1) delta.x += (points[i].x - centerX) * 0.08;
+        if (shape === 2) { delta.x -= (points[i].x - centerX) * 0.28; delta.z -= 0.001; }
+      }
       deltas.push(delta);
       if (delta.lengthSq() > 1e-16) activeVertices.add(i);
       delta.clone().applyMatrix3(fromFaceDirection).toArray(offsets, i * 3);

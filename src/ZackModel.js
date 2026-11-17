@@ -14,6 +14,7 @@ import { createShoulderCorrectives } from './shoulderCorrectives.js';
 import { createArmSoftening } from './armSoftening.js';
 import { createSpeechFace } from './SpeechFace.js';
 import { createMouthTopology } from './mouthTopology.js';
+import { alignSmileCornerUVs } from './alignSmileCornerUVs.js';
 
 /** Build a native, editable Three.js model without GLTFLoader or a GLB. */
 export function createZackModel(manifest, buffer, texture = null) {
@@ -111,6 +112,7 @@ export function createZackModel(manifest, buffer, texture = null) {
   root.userData.shoeLaceGapCorrection = repairShoeLaceGaps(geometry);
   root.userData.clothingSeamCorrection = repairClothingSeams(geometry);
   const mouthTopology = createMouthTopology({ root, mesh, geometry, material, skeleton, bones });
+  root.userData.smileCornerUVAlignment = alignSmileCornerUVs(geometry, mouthTopology);
   const restTransforms = skeleton.bones.map(bone => ({ position: bone.position.clone(), quaternion: bone.quaternion.clone(), scale: bone.scale.clone() }));
   const restPositions = geometry.attributes.position.array.slice();
   const restNormals = geometry.attributes.normal.array.slice();

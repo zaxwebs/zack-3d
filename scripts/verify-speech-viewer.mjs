@@ -94,6 +94,58 @@ try {
     await page.evaluate(x => { zack.speechFace.setPose({ open: 0.75, round: 0.6 }); studio.camera.position.set(x, 0.815, x ? 0.61 : 0.81); studio.controls.update(); studio.renderer.render(studio.scene, studio.camera); }, x);
     await page.screenshot({ path: `${output}/${name}.png` });
   }
+  for (const [name, x, z, pose] of [
+    ['lip-close-front', 0.0015, 0.35, { open: 0.8, spread: 0.2, round: 0.35 }],
+    ['lip-close-left', -0.235, 0.16, { open: 0.8, spread: 0.2, round: 0.35 }],
+    ['lip-close-right', 0.235, 0.16, { open: 0.8, spread: 0.2, round: 0.35 }],
+    ['lip-close-rounded', -0.235, 0.16, { open: 0.75, round: 1 }],
+    ['lip-close-partial', -0.235, 0.16, { open: 0.25, spread: 0.4 }],
+  ]) {
+    await page.evaluate(({ x, z, pose }) => {
+      zack.speechFace.setPose(pose); studio.controls.enableDamping = false; studio.controls.minDistance = 0.02;
+      studio.controls.target.set(0.0015, 0.730, 0.114); studio.camera.position.set(x, 0.740, z);
+      studio.controls.update(); studio.renderer.render(studio.scene, studio.camera);
+    }, { x, z, pose });
+    await page.screenshot({ path: `${output}/${name}.png` });
+  }
+  // Inspect the upper jaw in isolation, looking onto the crown surfaces.
+  // This diagnostic uses actual posed/exportable geometry, not a mockup.
+  report.dentalArch = await page.evaluate(async () => {
+    const T = await import('/node_modules/three/build/three.module.js');
+    zack.speechFace.setPose({ open: 1 });
+    const r = zack.speechFace.report, g = zack.geometry.clone(), positions = new Float32Array(g.attributes.position.array.length);
+    for (let i = 0; i < g.attributes.position.count; i++) zack.mesh.getVertexPosition(i, new T.Vector3()).applyMatrix4(zack.mesh.matrixWorld).toArray(positions, i * 3);
+    g.setAttribute('position', new T.BufferAttribute(positions, 3)); g.morphAttributes = {};
+    const indices = Array.from(g.index.array.slice(r.gumPalateStart, g.groups[2].start + g.groups[2].count));
+    g.setIndex(indices); g.clearGroups();
+    g.addGroup(0, r.gumPalateTriangles * 3, 0); g.addGroup(r.gumPalateTriangles * 3, indices.length - r.gumPalateTriangles * 3, 1);
+    g.computeVertexNormals(); g.computeBoundingSphere();
+    const scene = new T.Scene(); scene.background = new T.Color('#242229');
+    scene.add(new T.Mesh(g, [zack.mesh.material[1], zack.mesh.material[2]]));
+    scene.add(new T.AmbientLight(0xffffff, 1.4));
+    const key = new T.DirectionalLight(0xffffff, 2.5); key.position.set(-1, -2, 1); scene.add(key);
+    const camera = new T.OrthographicCamera(-0.047, 0.047, 0.041, -0.041, 0.01, 1);
+    camera.position.set(0.0015, 0.60, 0.096); camera.up.set(0, 0, -1); camera.lookAt(0.0015, 0.736, 0.096);
+    const renderer = new T.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true }); renderer.setSize(760, 664);
+    renderer.toneMapping = studio.renderer.toneMapping; renderer.toneMappingExposure = studio.renderer.toneMappingExposure;
+    renderer.domElement.id = 'dental-inspection'; renderer.domElement.style = 'position:fixed;top:0;left:0;z-index:9999';
+    document.body.append(renderer.domElement); renderer.render(scene, camera);
+    window.dentalInspection = { renderer, scene, camera, geometry: g };
+    return { columns: r.teethColumns, triangles: renderer.info.render.triangles, calls: renderer.info.render.calls };
+  });
+  assert.equal(report.dentalArch.calls, 2); assert.equal(report.dentalArch.triangles, 336);
+  await page.locator('#dental-inspection').screenshot({ path: `${output}/upper-dental-arch.png` });
+  await page.evaluate(() => {
+    const { camera, renderer, scene } = dentalInspection;
+    camera.position.set(0.082, 0.655, 0.18); camera.up.set(0, 1, 0); camera.lookAt(0.0015, 0.736, 0.096); renderer.render(scene, camera);
+  });
+  await page.locator('#dental-inspection').screenshot({ path: `${output}/upper-dental-oblique.png` });
+  await page.evaluate(() => { dentalInspection.geometry.dispose(); dentalInspection.renderer.dispose(); dentalInspection.renderer.domElement.remove(); delete window.dentalInspection; });
+  const uvBefore = await page.evaluate(() => Array.from(zack.geometry.attributes.uv.array));
+  for (const textureSize of [1024, 2048, 4096, 2048]) {
+    await page.evaluate(async size => { await zack.setTextureSize(size); studio.renderer.render(studio.scene, studio.camera); }, textureSize);
+    assert.deepEqual(await page.evaluate(() => Array.from(zack.geometry.attributes.uv.array)), uvBefore, 'Lip alignment stays the same at every texture resolution');
+  }
   await page.click('#speechFocus');
   await page.evaluate(() => { zackRig.setHeadTurn(25); zack.speechFace.setPose({ open: 0.6, round: 0.8 }); studio.renderer.render(studio.scene, studio.camera); });
   await page.screenshot({ path: `${output}/head-turn.png` });
@@ -109,6 +161,7 @@ try {
   assert(report.mocap.intact);
 
   // The opening, teeth, lining, and shapes export as ordinary native geometry.
+  await page.click('#speechFocus');
   report.export = await page.evaluate(async () => {
     const T = await import('/node_modules/three/build/three.module.js');
     zack.speechFace.setPose({ open: 0.8, spread: 0.3 }); zack.armSoftening.update();
@@ -122,11 +175,16 @@ try {
     window.speechSnapshot = snapshot; studio.scene.add(snapshot); zack.root.visible = false;
     studio.renderer.render(studio.scene, studio.camera);
     const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+    const colors = geometry.attributes.color.array, exportedColors = mesh.geometry.attributes.color.array;
+    const uv = geometry.attributes.uv.array, exportedUV = mesh.geometry.attributes.uv.array;
     return { maxError, restored: zack.mesh.geometry === geometry && zack.mesh.morphTargetInfluences === influences && zack.material.map === map,
-      nativeMap: materials[0].map.uuid === map.uuid, materials: materials.map(material => material.name), groups: mesh.geometry.groups.length, triangles: mesh.geometry.index.count / 3 };
+      nativeMap: materials[0].map.uuid === map.uuid, nativeColors: colors.every((value, i) => value === exportedColors[i]),
+      nativeUV: uv.every((value, i) => value === exportedUV[i]), gradientMaterials: materials[1].vertexColors && materials[3].vertexColors,
+      materials: materials.map(material => material.name), groups: mesh.geometry.groups.length, triangles: mesh.geometry.index.count / 3 };
   });
   await page.screenshot({ path: `${output}/export.png` });
   assert(report.export.restored && report.export.nativeMap && report.export.groups === 4 && report.export.maxError < 1e-7);
+  assert(report.export.nativeColors && report.export.nativeUV && report.export.gradientMaterials, 'Native exports retain the lip UVs and mouth gradient');
   await page.evaluate(() => { studio.scene.remove(speechSnapshot); zack.root.visible = true; zack.speechFace.reset(); });
   await page.selectOption('#surface', 'clay');
   await page.evaluate(() => { zack.speechFace.setPose({ open: 0.6 }); studio.renderer.render(studio.scene, studio.camera); });
