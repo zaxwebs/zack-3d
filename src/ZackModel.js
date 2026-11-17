@@ -167,11 +167,20 @@ export function createZackModel(manifest, buffer, texture = null) {
     const index = skeleton.bones.indexOf(bone);
     if (index >= 0) legJoints.add(index);
   });
+  const hemFadeStart = 0.405;
+  const torsoStart = 0.45;
+  const rearHemFadeStart = 0.37;
+  const waistDepth = root.worldToLocal(bones.Waist.getWorldPosition(new THREE.Vector3())).z;
   let hoodieVertices = 0;
   for (let vertex = 0; vertex < joints.count; vertex++) {
     mesh.getVertexPosition(vertex, point).applyMatrix4(mesh.matrixWorld);
     root.worldToLocal(point);
-    const protect = THREE.MathUtils.smoothstep(point.y, 0.405, 0.45)
+    // A high kick pulls the back hem toward the thigh. Spread the rear
+    // transition over a taller band to avoid a sharp crease below the hem.
+    const rear = 1 - THREE.MathUtils.smoothstep(point.z - waistDepth, -0.035, 0.01);
+    const frontFade = THREE.MathUtils.smoothstep(point.y, hemFadeStart, torsoStart);
+    const rearFade = THREE.MathUtils.smoothstep(point.y, rearHemFadeStart, torsoStart);
+    const protect = THREE.MathUtils.lerp(frontFade, rearFade, rear)
       * (1 - THREE.MathUtils.smoothstep(Math.abs(point.x - chestCenter), 0.115, 0.145));
     if (!protect) continue;
     const influences = new Map();
@@ -194,7 +203,7 @@ export function createZackModel(manifest, buffer, texture = null) {
     }
     hoodieVertices++;
   }
-  root.userData.hoodieWeightCorrection = { correctedVertices: hoodieVertices, hemFadeStart: 0.405, torsoStart: 0.45 };
+  root.userData.hoodieWeightCorrection = { correctedVertices: hoodieVertices, hemFadeStart, rearHemFadeStart, torsoStart };
   root.userData.shoulderWeightTransition = softenShoulderWeights({ root, mesh, skeleton, bones, geometry });
   root.userData.jointWeightTransitions = softenJointWeights({ root, mesh, skeleton, bones, geometry });
   root.userData.elbowWeightCorrection = refineElbowWeights({ root, mesh, skeleton, bones, geometry });

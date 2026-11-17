@@ -61,19 +61,30 @@ for (const side of ['L', 'R']) {
   const axis = hand.position.clone().normalize();
   const worldAxis = axis.clone().applyQuaternion(forearm.getWorldQuaternion(new THREE.Quaternion())).normalize();
   forearm.quaternion.multiply(new THREE.Quaternion().setFromAxisAngle(axis, 2 * Math.PI / 3));
+  hand.quaternion.premultiply(new THREE.Quaternion().setFromAxisAngle(axis, Math.PI / 6));
   root.updateMatrixWorld(true);
   const mainBefore = skeleton.bones.map(bone => bone.getWorldQuaternion(new THREE.Quaternion()).normalize());
   model.armTwist.update();
   names.forEach((name, i) => {
     const delta = bones[`${side}_${name}`].getWorldQuaternion(new THREE.Quaternion()).normalize().multiply(baseline[i].clone().invert());
-    const expected = new THREE.Quaternion().setFromAxisAngle(worldAxis, i * Math.PI / 3);
-    assert(delta.angleTo(expected) < 1e-6, `${side}: elbow/forearm/wrist roll should be 0/60/120 degrees`);
+    const expected = new THREE.Quaternion().setFromAxisAngle(worldAxis, i * 5 * Math.PI / 12);
+    assert(delta.angleTo(expected) < 1e-6, `${side}: elbow/forearm/wrist roll should be 0/75/150 degrees`);
   });
   skeleton.bones.forEach((bone, i) => {
     if (/(?:Upperarm|Forearm)Twist|ElbowBlend|ElbowRound/.test(bone.name)) return;
     assert(bone.getWorldQuaternion(new THREE.Quaternion()).normalize().angleTo(mainBefore[i]) < 1e-6,
       'Distributing roll must preserve the main animation joints');
   });
+  const posed = names.map(name => bones[`${side}_${name}`].getWorldQuaternion(new THREE.Quaternion()).normalize());
+  for (const bone of [forearm, hand]) {
+    const q = bone.quaternion;
+    q.set(-q.x, -q.y, -q.z, -q.w);
+    model.armTwist.update();
+    names.forEach((name, i) => {
+      assert(bones[`${side}_${name}`].getWorldQuaternion(new THREE.Quaternion()).normalize().angleTo(posed[i]) < 1e-6,
+        `${side}: equivalent ${bone.name} rotation changed ${name}`);
+    });
+  }
 }
 model.reset();
 const totals = new Array(skeleton.bones.length).fill(0);
